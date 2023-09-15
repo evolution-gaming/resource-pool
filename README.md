@@ -6,7 +6,7 @@
 
 Pool of cats-effect resources
 
-Features:
+## Features:
 * allocates resources on demand up to configured limit
 * deallocates resources if not active for a configured time
 * tries to minimize number of resources in the pool
