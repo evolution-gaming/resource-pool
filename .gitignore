@@ -1,0 +1,40 @@
+*.class
+*.log
+
+# sbt specific
+.cache
+.history
+.lib/
+dist/*
+target/
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+.bsp/
+
+# Scala-IDE specific
+.scala_dependencies
+.worksheet
+
+# Idea
+.idea/
+*.iml
+*.ipr
+
+# Visual Studio Code
+.bloop
+.history
+.metals
+.vscode
+metals.sbt
+
+# Mac
+.DS_Store
+
+ignore
+
+scripts/tmp
+ignored/
+
+.java-version
