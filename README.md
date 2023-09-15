@@ -1,6 +1,6 @@
 # resource-pool
 [![Build Status](https://github.com/evolution-gaming/resource-pool/workflows/CI/badge.svg)](https://github.com/evolution-gaming/resource-pool/actions?query=workflow%3ACI)
-[![Coverage Status](https://coveralls.io/repos/github/evolution-gaming/resource-pool/badge.svg?branch=master)](https://coveralls.io/github/evolution-gaming/resource-pool?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/evolution-gaming/resource-pool/badge.svg?branch=main)](https://coveralls.io/github/evolution-gaming/resource-pool?branch=main)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/fab03059b5f94fa5b1e7ad7bddfe8b07)](https://www.codacy.com/app/evolution-gaming/resource-pool?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=evolution-gaming/resource-pool&amp;utm_campaign=Badge_Grade)
 [![Version](https://img.shields.io/badge/version-click-blue)](https://evolution.jfrog.io/artifactory/api/search/latestVersion?g=com.evolutiongaming&a=resource-pool_2.13&repos=public)
 
