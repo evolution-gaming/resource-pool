@@ -23,12 +23,8 @@ libraryDependencies += compilerPlugin(`kind-projector` cross CrossVersion.full)
 scalacOptsFailOnWarn := Some(false)
 
 libraryDependencies ++= Seq(
-  Cats.core,
-  Cats.laws              % Test,
-  `cats-effect`          % Test,
-  scalatest              % Test,
-  `scalacheck-shapeless` % Test,
-  `discipline-scalatest` % Test,
+  `cats-effect`,
+  scalatest % Test,
 )
 
 licenses := Seq(("MIT", url("https://opensource.org/licenses/MIT")))
