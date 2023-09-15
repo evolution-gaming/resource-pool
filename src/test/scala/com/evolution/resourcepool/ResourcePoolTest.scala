@@ -128,38 +128,40 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
 
   test("release gracefully") {
     val result = for {
-      ref             <- Ref[IO].of(0)
-      result          <- ResourcePool
+      ref              <- Ref[IO].of(0)
+      result           <- ResourcePool
         .of(
           maxSize = 2,
           expireAfter = 1.day,
           resource = Resource.release { ref.update { _ + 1 } }
         )
         .allocated
-      (pool, release)  = result
-      result          <- pool.get
-      (_, release0)    = result
-      result          <- pool.get
-      (_, release1)    = result
-      fiber0          <- pool
+      (pool, release0)  = result
+      result           <- pool.get
+      (_, release1)     = result
+      result           <- pool.get
+      (_, release2)     = result
+      fiber0           <- pool
         .resource
         .use { _.pure[IO] }
         .start
-      fiber1          <- release.start
-      join             = fiber1
+      result           <- fiber0
         .join
-        .timeout(100.millis)
+        .timeout(10.millis)
         .attempt
-      result          <- join
-      _               <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
-      _               <- release0
-      _               <- fiber0.joinWithNever
-      result          <- join
-      _               <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
-      _               <- release1
-      _               <- fiber1.joinWithNever
-      result          <- ref.get
-      _               <- IO { result shouldEqual 2 }
+      _                <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
+      _                <- release1
+      _                <- fiber0.joinWithNever
+      fiber1           <- release0.start
+      result           <- fiber1
+        .join
+        .timeout(10.millis)
+        .attempt
+      _                <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
+      _                <- release2
+      _                <- fiber1.joinWithNever
+      result           <- ref.get
+      _                <- IO { result shouldEqual 2 }
     } yield {}
     result.run()
   }
