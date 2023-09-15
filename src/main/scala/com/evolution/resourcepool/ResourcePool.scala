@@ -132,31 +132,27 @@ object ResourcePool {
                             }
                             .uncancelable
                         }
-                        println(s"release: $state")
 
                         state.stage match {
                           case stage: State.Allocated.Stage.Free =>
-                            val (releasing, release) = stage
+                            val (entries, releasing, release) = stage
                               .ids
-                              .foldLeft((state.releasing, ().pure[F])) {
-                                case ((releasing, release), id) =>
-                                  state
-                                    .entries
+                              .foldLeft((state.entries, state.releasing, ().pure[F])) {
+                                case ((entries, releasing, release), id) =>
+                                  entries
                                     .get(id)
                                     .fold {
-                                      (releasing, release)
+                                      (entries, releasing, release)
                                     } {
                                       case Some(entry) =>
-                                        (releasing + id, release.productR(entry.release))
+                                        (entries - id, releasing + id, release.productR(entry.release))
                                       case None        =>
-                                        (releasing, release)
+                                        (entries, releasing, release)
                                     }
                               }
-                            val allocated = state.entries.keySet -- releasing
-                            println(s"allocated: $allocated, releasing: $releasing")
 
                             apply(
-                              allocated = allocated,
+                              allocated = entries.keySet,
                               releasing = releasing,
                               Queue.empty
                             ) {

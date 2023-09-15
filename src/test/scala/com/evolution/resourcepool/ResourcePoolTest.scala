@@ -180,13 +180,12 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
     result.run()
   }
 
-  // TODO
-  ignore("propagate release errors") {
+  test("propagate release errors") {
     val error = new RuntimeException("error") with NoStackTrace
     val result = for {
-      deferred        <- Deferred[IO, Unit]
-      ref             <- Ref[IO].of(List(error.raiseError[IO, Unit], deferred.complete(()).void))
-      result          <- ResourcePool
+      deferred         <- Deferred[IO, Unit]
+      ref              <- Ref[IO].of(List(error.raiseError[IO, Unit], deferred.complete(()).void))
+      result           <- ResourcePool
         .of(
           maxSize = 2,
           expireAfter = 1.day,
@@ -200,15 +199,16 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
           }
         )
         .allocated
-      (pool, release)  = result
-      _               <- pool.resource.use { _.pure[IO] }
-      _               <- pool.resource.use { _.pure[IO] }
-      _               <- pool.resource.use { _.pure[IO] }
-      result          <- release.attempt
-      _               <- IO { result shouldEqual error.asLeft }
-      _               <- deferred.get
-      result          <- ref.get
-      _               <- IO { result shouldEqual List.empty }
+      (pool, release0)  = result
+      result           <- pool.get
+      (_, release1)     = result
+      _                <- pool.resource.use { _.pure[IO] }
+      _                <- release1
+      result           <- release0.attempt
+      _                <- IO { result shouldEqual error.asLeft }
+      _                <- deferred.get
+      result           <- ref.get
+      _                <- IO { result shouldEqual List.empty }
     } yield {}
     result.run()
   }
@@ -304,26 +304,17 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
           .joinWithNever
           .timeout(10.millis)
           .attempt
-        _ = println("1")
         _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
-        _ = println("2")
         fiber1 <- pool.resource.use { _.pure[IO] }.start
-        _ = println("3")
         result <- fiber1
           .joinWithNever
           .timeout(10.millis)
           .attempt
-        _ = println("4")
         _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
-        _ = println("5")
         _      <- deferred.complete(error)
-        _ = println("6")
         result <- fiber0.joinWithNever.attempt
-        _ = println("7")
         _      <- IO { result shouldEqual error.asLeft }
-        _ = println("8")
         result <- fiber1.joinWithNever.attempt
-        _ = println("9")
         _      <- IO { result shouldEqual error.asLeft }
       } yield {}
     }
