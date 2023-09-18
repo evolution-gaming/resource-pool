@@ -14,7 +14,7 @@ organizationHomepage := Some(url("http://evolution.com"))
 
 scalaVersion := crossScalaVersions.value.head
 
-crossScalaVersions := Seq("2.13.10")
+crossScalaVersions := Seq("2.13.12")
 
 publishTo := Some(Resolver.evolutionReleases)
 
