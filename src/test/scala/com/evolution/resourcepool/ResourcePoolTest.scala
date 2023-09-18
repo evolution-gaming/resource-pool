@@ -275,7 +275,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         _      <- pool
           .resource
           .use { _ => Temporal[IO].sleep(1.millis) }
-          .parReplicateA(100)
+          .parReplicateA(maxSize * 100)
           .map { _.combineAll }
         result <- ref.get
         _      <- IO { result shouldEqual maxSize }
@@ -286,6 +286,34 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       .use(identity)
       .run()
   }
+
+  test("not exceed `maxSize` with partitioned pool") {
+    val maxSize = 100
+    val resource = for {
+      ref  <- Ref[IO].of(0).toResource
+      pool <- ResourcePool.of(
+        maxSize = maxSize,
+        partitions = 10,
+        expireAfter = 1.day,
+        resource = _ => ref.update { _ + 1 }.toResource
+      )
+    } yield {
+      for {
+        _ <- pool
+          .resource
+          .use { _ => Temporal[IO].sleep(1.millis) }
+          .parReplicateA(maxSize * 100)
+          .map { _.combineAll }
+        result <- ref.get
+        _ <- IO { result shouldEqual maxSize }
+      } yield {}
+    }
+
+    resource
+      .use(identity)
+      .run()
+  }
+
 
   test("resource allocation fails after some time") {
     val error = new RuntimeException("error") with NoStackTrace
