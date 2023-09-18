@@ -80,7 +80,7 @@ object ResourcePool {
             def get = {
               for {
                 counter   <- ref.modify { a => (a + 1, a) }
-                partition  = counter % length
+                partition  = (counter % length).abs
                 result    <- values
                   .apply(partition)
                   .get
