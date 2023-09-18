@@ -20,7 +20,7 @@ Pool of [cats-effect](https://typelevel.org/cats-effect/) resources
 import com.evolution.resourcepool.ResourcePool.implicits._
 
 trait Connection {
-  def query(any: Any): IO[Any]
+  def query(): IO[Any]
 }
 
 def connection: Resource[IO, Connection] = ???
