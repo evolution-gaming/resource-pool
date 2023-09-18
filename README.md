@@ -31,7 +31,7 @@ connection
     expireAfter = 1.minute) // pool will release connection if it is not used for 1 minute
   .use { connectionPool =>
     connectionPool
-      .resource // this will get first available connection
+      .resource // this will get first available connection or allocate one
       .use { connection =>
         connection.query() // here you have access to the connection
       }
