@@ -23,7 +23,7 @@ private[resourcepool] object IntHelper {
           if (self > quotient && value > 1) {
             loop(self - quotient, value - 1, quotient :: result)
           } else {
-            self :: result
+            (self :: result).reverse
           }
         }
 

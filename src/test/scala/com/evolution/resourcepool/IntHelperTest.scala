@@ -12,10 +12,10 @@ class IntHelperTest extends AnyFunSuite with Matchers {
       (1, 3, List(1)),
       (2, 3, List(1, 1)),
       (3, 3, List(1, 1, 1)),
-      (3, 2, List(1, 2)),
-      (5, 3, List(1, 2, 2)),
-      (5, 2, List(2, 3)),
-      (5, 4, List(2, 1, 1, 1)))
+      (3, 2, List(2, 1)),
+      (5, 3, List(2, 2, 1)),
+      (5, 2, List(3, 2)),
+      (5, 4, List(1, 1, 1, 2)))
   } {
     test(s"value: $value, divisor: $divisor, result: $result") {
       value.divide(divisor) shouldEqual result
