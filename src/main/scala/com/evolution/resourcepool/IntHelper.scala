@@ -2,7 +2,7 @@ package com.evolution.resourcepool
 
 import scala.annotation.tailrec
 
-object IntHelper {
+private[resourcepool] object IntHelper {
 
   implicit class IntOpsIntHelper(val self: Int) extends AnyVal {
 
