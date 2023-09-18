@@ -4,7 +4,7 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/879e88a4e6a94647848bc6b45788a9d7)](https://app.codacy.com/gh/evolution-gaming/resource-pool/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![Version](https://img.shields.io/badge/version-click-blue)](https://evolution.jfrog.io/artifactory/api/search/latestVersion?g=com.evolutiongaming&a=resource-pool_2.13&repos=public)
 
-Pool of cats-effect resources
+Pool of [cats-effect](https://typelevel.org/cats-effect/) resources
 
 ## Features:
 * allocates resources on demand up to configured limit
