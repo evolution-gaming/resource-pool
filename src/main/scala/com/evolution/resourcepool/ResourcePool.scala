@@ -743,8 +743,7 @@ object ResourcePool {
         maxSize: Int,
         expireAfter: FiniteDuration,
       )(implicit
-        async: Async[F],
-        temporal: Temporal[F],
+        F: Async[F],
       ): Resource[F, ResourcePool[F, A]] = {
         ResourcePool.of(maxSize, expireAfter, _ => self)
       }
@@ -754,8 +753,7 @@ object ResourcePool {
         partitions: Int,
         expireAfter: FiniteDuration,
       )(implicit
-        async: Async[F],
-        temporal: Temporal[F],
+        F: Async[F],
       ): Resource[F, ResourcePool[F, A]] = {
         ResourcePool.of(maxSize = maxSize, partitions = partitions, expireAfter, _ => self)
       }
