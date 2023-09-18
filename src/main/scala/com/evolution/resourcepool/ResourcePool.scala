@@ -20,6 +20,7 @@ trait ResourcePool[F[_], A] {
   * TODO
   * * partitioning
   * * cancellable
+  * * Id => Resource
   */
 object ResourcePool {
 

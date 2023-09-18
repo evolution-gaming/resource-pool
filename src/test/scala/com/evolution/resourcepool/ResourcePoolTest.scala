@@ -325,8 +325,69 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       .run()
   }
 
-  ignore("cancel resource allocation") {
-    ???
+  ignore("cancel `get`") {
+    val result = for {
+      deferred0 <- Deferred[IO, Unit]
+      deferred1 <- Deferred[IO, Unit]
+      result    <- ResourcePool
+        .of(
+          maxSize = 1,
+          expireAfter = 1.day,
+          resource = deferred0
+            .complete(())
+            .productR { deferred1.get }
+            .toResource
+        )
+        .allocated
+      (pool, release) = result
+      fiber0    <- pool
+        .get
+        .start
+      result    <- fiber0
+        .joinWithNever
+        .timeout(10.millis)
+        .attempt
+      _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
+      _      <- deferred0.get
+      fiber1 <- fiber0.cancel.start
+      _      <- deferred1.complete(())
+      _      <- fiber1.join
+      _      <- release
+    } yield {}
+    result.run()
+  }
+
+  test("cancel `resource.use") {
+    val result = for {
+      deferred0 <- Deferred[IO, Unit]
+      deferred1 <- Deferred[IO, Unit]
+      result    <- ResourcePool
+        .of(
+          maxSize = 1,
+          expireAfter = 1.day,
+          resource = deferred0
+            .complete(())
+            .productR { deferred1.get }
+            .toResource
+        )
+        .allocated
+      (pool, release) = result
+      fiber0    <- pool
+        .resource
+        .use { _ => IO.never }
+        .start
+      result    <- fiber0
+        .joinWithNever
+        .timeout(10.millis)
+        .attempt
+      _         <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
+      _         <- deferred0.get
+      fiber1    <- fiber0.cancel.start
+      _         <- deferred1.complete(())
+      _         <- fiber1.join
+      _         <- release
+    } yield {}
+    result.run()
   }
 
   test("release before resource allocation is completed") {
