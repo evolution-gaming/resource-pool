@@ -14,6 +14,31 @@ Pool of cats-effect resources
 * shuts down gracefully after completing accumulated tasks
 * tolerates resource failures
 
+## Example 
+
+```scala
+import com.evolution.resourcepool.ResourcePool.implicits._
+
+trait Connection {
+  def query(any: Any): IO[Any]
+}
+
+def connection: Resource[IO, Connection] = ???
+
+connection
+  .toResourcePool( // you can convert any resource into the pool of resources
+    maxSize = 10, // it will create up to `maxSize` connections 
+    expireAfter = 1.minute) // pool will release connection if it is not used for 1 minute
+  .use { connectionPool =>
+    connectionPool
+      .resource // this will get first available connection and there after release it when done
+      .use { connection =>
+        connection.query() // here you have access to the connection
+      }
+  }
+
+```
+
 ## Setup
 
 ```scala
