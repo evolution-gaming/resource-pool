@@ -20,7 +20,7 @@ trait ResourcePool[F[_], A] {
   * TODO
   * * partitioning
   * * cancellable
-  * * Id => Resource
+  * * extension methods
   */
 object ResourcePool {
 
@@ -31,7 +31,7 @@ object ResourcePool {
   def of[F[_]: Async: Temporal, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
-    resource: Resource[F, A]
+    resource: Id => Resource[F, A]
   ): Resource[F, ResourcePool[F, A]] = {
 
     def apply(maxSize: Int) = {
@@ -423,6 +423,7 @@ object ResourcePool {
                                   entries = state.entries.updated(id, none))
                               } {
                                 resource
+                                  .apply(id.toString)
                                   .allocated
                                   .attempt
                                   .flatMap {
@@ -667,7 +668,7 @@ object ResourcePool {
   final case class IllegalStateError(msg: String) extends RuntimeException(msg) with NoStackTrace
 
 
-  implicit class PoolOps[F[_], A](val self: ResourcePool[F, A]) extends AnyVal {
+  implicit class ResourcePoolOps[F[_], A](val self: ResourcePool[F, A]) extends AnyVal {
 
     def resource(implicit F: Functor[F]): Resource[F, A] = Resource(self.get)
   }

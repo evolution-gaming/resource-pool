@@ -19,7 +19,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       .of(
         maxSize = 1,
         expireAfter = 1.day,
-        ().pure[Resource[IO, *]])
+        _ => ().pure[Resource[IO, *]])
       .use { pool =>
         pool
           .resource
@@ -44,7 +44,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .of(
           maxSize = 1,
           expireAfter = 1.day,
-          Resource.make {
+          resource = _ => Resource.make {
             add(Action.Acquire)
           } { _ =>
             add(Action.Release)
@@ -81,7 +81,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       pool      <- ResourcePool.of(
         maxSize = 2,
         expireAfter = 1.day,
-        resource = {
+        resource = _ => {
           val result = for {
             result <- ref.modify {
               case a :: as => (as, a.some)
@@ -115,7 +115,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .of(
           maxSize = 2,
           expireAfter = 1.day,
-          resource = ().pure[Resource[IO, *]]
+          resource = _ => ().pure[Resource[IO, *]]
         )
         .allocated
       (pool, release)  = result
@@ -133,7 +133,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .of(
           maxSize = 2,
           expireAfter = 1.day,
-          resource = Resource.release { ref.update { _ + 1 } }
+          resource = _ => Resource.release { ref.update { _ + 1 } }
         )
         .allocated
       (pool, release0)  = result
@@ -173,7 +173,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .of(
           maxSize = 2,
           expireAfter = 1.day,
-          resource = ref.update { _ + 1 }.toResource
+          resource = _ => ref.update { _ + 1 }.toResource
         )
         .use { _ => ().pure[IO] }
       result <- ref.get
@@ -191,7 +191,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .of(
           maxSize = 2,
           expireAfter = 1.day,
-          resource = Resource.release {
+          resource = _ => Resource.release {
             ref
               .modify {
                 case a :: as => (as, a)
@@ -224,7 +224,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       pool      <- ResourcePool.of(
         maxSize = 5,
         expireAfter = 10.millis,
-        resource = Resource.make {
+        resource = _ => Resource.make {
           for {
             a <- ref0.update { _ + 1 }
             _ <- deferred0.complete(())
@@ -266,7 +266,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       pool <- ResourcePool.of(
         maxSize = maxSize,
         expireAfter = 1.day,
-        resource = ref.update { _ + 1 }.toResource
+        resource = _ => ref.update { _ + 1 }.toResource
       )
     } yield {
       for {
@@ -292,7 +292,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       pool     <- ResourcePool.of(
         maxSize = 1,
         expireAfter = 1.day,
-        resource = {
+        resource = _ => {
           for {
             a <- deferred.get.toResource
             a <- a.raiseError[IO, Unit].toResource
@@ -333,7 +333,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .of(
           maxSize = 1,
           expireAfter = 1.day,
-          resource = deferred0
+          resource = _ => deferred0
             .complete(())
             .productR { deferred1.get }
             .toResource
@@ -365,7 +365,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .of(
           maxSize = 1,
           expireAfter = 1.day,
-          resource = deferred0
+          resource = _ => deferred0
             .complete(())
             .productR { deferred1.get }
             .toResource
@@ -397,7 +397,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .of(
           maxSize = 1,
           expireAfter = 1.day,
-          resource = deferred.get.toResource
+          resource = _ => deferred.get.toResource
         )
         .allocated
       (pool, release) = result
@@ -439,7 +439,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       pool <- ResourcePool.of(
         maxSize = 5,
         expireAfter = 10.millis,
-        resource = Resource.make {
+        resource = _ => Resource.make {
           add(Action.Allocate)
         } { _ =>
           add(Action.Release)
