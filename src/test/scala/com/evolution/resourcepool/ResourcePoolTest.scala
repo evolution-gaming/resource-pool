@@ -5,6 +5,7 @@ import cats.effect.syntax.all._
 import cats.effect.{Deferred, IO, Resource, Temporal}
 import com.evolution.resourcepool.util.IOSuite._
 import cats.syntax.all._
+import com.evolution.resourcepool.ResourcePool.implicits._
 import org.scalatest.funsuite.AsyncFunSuite
 import org.scalatest.matchers.should.Matchers
 
@@ -15,11 +16,12 @@ import scala.util.control.NoStackTrace
 class ResourcePoolTest extends AsyncFunSuite with Matchers {
 
   test("handle invalid `maxSize`") {
-    ResourcePool
-      .of(
+    ()
+      .pure[Resource[IO, *]]
+      .toResourcePool(
         maxSize = 1,
         expireAfter = 1.day,
-        _ => ().pure[Resource[IO, *]])
+      )
       .use { pool =>
         pool
           .resource

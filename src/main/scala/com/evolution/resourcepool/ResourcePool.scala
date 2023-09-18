@@ -20,7 +20,6 @@ trait ResourcePool[F[_], A] {
   * TODO
   * * partitioning
   * * cancellable
-  * * extension methods
   */
 object ResourcePool {
 
@@ -671,5 +670,19 @@ object ResourcePool {
   implicit class ResourcePoolOps[F[_], A](val self: ResourcePool[F, A]) extends AnyVal {
 
     def resource(implicit F: Functor[F]): Resource[F, A] = Resource(self.get)
+  }
+
+  object implicits {
+    implicit class ResourceOpsResourcePool[F[_], A](val self: Resource[F, A]) extends AnyVal {
+      def toResourcePool(
+        maxSize: Int,
+        expireAfter: FiniteDuration,
+      )(implicit
+        async: Async[F],
+        temporal: Temporal[F],
+      ): Resource[F, ResourcePool[F, A]] = {
+        ResourcePool.of(maxSize, expireAfter, _ => self)
+      }
+    }
   }
 }
