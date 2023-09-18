@@ -527,6 +527,7 @@ object ResourcePool {
                                                           .asLeft[Unit]
                                                           .pure[F]
                                                     }
+                                                    .uncancelable
                                                 }
 
                                                 if (entries.isEmpty) {
@@ -534,9 +535,9 @@ object ResourcePool {
                                                     case stage: State.Allocated.Stage.Free =>
                                                       apply(stage) { ().pure[F] }
                                                     case stage: State.Allocated.Stage.Busy =>
-                                                      apply(
+                                                      apply {
                                                         State.Allocated.Stage.free(List.empty)
-                                                      ) {
+                                                      } {
                                                         stage
                                                           .tasks
                                                           .foldMapM { task =>
