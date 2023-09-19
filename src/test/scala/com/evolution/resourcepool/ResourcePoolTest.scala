@@ -1,10 +1,10 @@
 package com.evolution.resourcepool
 
-import cats.effect.kernel.{Concurrent, Ref}
-import cats.effect.syntax.all._
-import cats.effect.{Deferred, IO, Resource, Temporal}
+import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.{Concurrent, IO, Resource, Timer}
 import com.evolution.resourcepool.util.IOSuite._
 import cats.syntax.all._
+import com.evolution.resourcepool.ResourceHelper._
 import com.evolution.resourcepool.ResourcePool.implicits._
 import org.scalatest.funsuite.AsyncFunSuite
 import org.scalatest.matchers.should.Matchers
@@ -153,7 +153,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .attempt
       _                <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
       _                <- release1
-      _                <- fiber0.joinWithNever
+      _                <- fiber0.join
       fiber1           <- release0.start
       result           <- fiber1
         .join
@@ -161,7 +161,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .attempt
       _                <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
       _                <- release2
-      _                <- fiber1.joinWithNever
+      _                <- fiber1.join
       result           <- ref.get
       _                <- IO { result shouldEqual 2 }
     } yield {}
@@ -229,12 +229,16 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         resource = _ => Resource.make {
           for {
             a <- ref0.update { _ + 1 }
-            _ <- deferred0.complete(())
+            _ <- deferred0
+              .complete(())
+              .handleError { _ => () }
           } yield a
         } { _ =>
           for {
             a <- ref1.update { _ + 1 }
-            _ <- deferred1.complete(())
+            _ <- deferred1
+              .complete(())
+              .handleError { _ => () }
           } yield a
         }
       )
@@ -274,7 +278,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       for {
         _      <- pool
           .resource
-          .use { _ => Temporal[IO].sleep(1.millis) }
+          .use { _ => Timer[IO].sleep(1.millis) }
           .parReplicateA(maxSize * 100)
           .map { _.combineAll }
         result <- ref.get
@@ -301,7 +305,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       for {
         _ <- pool
           .resource
-          .use { _ => Temporal[IO].sleep(1.millis) }
+          .use { _ => Timer[IO].sleep(1.millis) }
           .parReplicateA(maxSize * 100)
           .map { _.combineAll }
         result <- ref.get
@@ -333,20 +337,20 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       for {
         fiber0 <- pool.resource.use { _.pure[IO] }.start
         result <- fiber0
-          .joinWithNever
+          .join
           .timeout(10.millis)
           .attempt
         _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
         fiber1 <- pool.resource.use { _.pure[IO] }.start
         result <- fiber1
-          .joinWithNever
+          .join
           .timeout(10.millis)
           .attempt
         _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
         _      <- deferred.complete(error)
-        result <- fiber0.joinWithNever.attempt
+        result <- fiber0.join.attempt
         _      <- IO { result shouldEqual error.asLeft }
-        result <- fiber1.joinWithNever.attempt
+        result <- fiber1.join.attempt
         _      <- IO { result shouldEqual error.asLeft }
       } yield {}
     }
@@ -374,7 +378,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .get
         .start
       result    <- fiber0
-        .joinWithNever
+        .join
         .timeout(10.millis)
         .attempt
       _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
@@ -407,7 +411,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .use { _ => IO.never }
         .start
       result    <- fiber0
-        .joinWithNever
+        .join
         .timeout(10.millis)
         .attempt
       _         <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
@@ -436,20 +440,20 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .use { _.pure[IO] }
         .start
       result   <- fiber0
-        .joinWithNever
+        .join
         .timeout(10.millis)
         .attempt
       _        <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
 
       fiber1   <- release.start
       result   <- fiber1
-        .joinWithNever
+        .join
         .timeout(10.millis)
         .attempt
       _        <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
       _        <- deferred.complete(())
-      _        <- fiber0.joinWithNever
-      _        <- fiber1.joinWithNever
+      _        <- fiber0.join
+      _        <- fiber1.join
     } yield {}
     result.run()
   }

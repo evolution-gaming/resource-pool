@@ -1,8 +1,7 @@
 package com.evolution.resourcepool.util
 
 import cats.Applicative
-import cats.effect.unsafe.implicits.global
-import cats.effect.{IO, Resource}
+import cats.effect.{ContextShift, IO, Resource, Timer}
 import cats.syntax.all._
 import org.scalatest.Succeeded
 
@@ -13,6 +12,8 @@ object IOSuite {
   val Timeout: FiniteDuration = 1.minute
 
   implicit val executor: ExecutionContextExecutor = ExecutionContext.global
+  implicit val concurrentIO: ContextShift[IO]     = IO.contextShift(executor)
+  implicit val timerIO: Timer[IO]                 = IO.timer(executor)
 
   def runIO[A](io: IO[A], timeout: FiniteDuration = Timeout): Future[Succeeded.type] = {
     io.timeout(timeout).as(Succeeded).unsafeToFuture()

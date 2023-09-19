@@ -1,14 +1,16 @@
 package com.evolution.resourcepool
 
 import cats.Functor
-import cats.effect.{Async, Resource, Temporal}
-import cats.effect.kernel.{Deferred, Ref, Sync}
+import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.{Async, Clock, Concurrent, Resource, Sync, Timer}
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.evolution.resourcepool.IntHelper._
+import com.evolution.resourcepool.ResourceHelper._
 
+import java.util.concurrent.TimeUnit
 import scala.collection.immutable.Queue
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration._
 import scala.util.control.NoStackTrace
 
 trait ResourcePool[F[_], A] {
@@ -27,7 +29,7 @@ object ResourcePool {
 
   type Id = String
 
-  def of[F[_]: Async, A](
+  def of[F[_]: Concurrent: Timer, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
     resource: Id => Resource[F, A]
@@ -49,7 +51,7 @@ object ResourcePool {
     apply(maxSize.max(1))
   }
 
-  def of[F[_]: Async, A](
+  def of[F[_]: Concurrent: Timer, A](
     maxSize: Int,
     partitions: Int,
     expireAfter: FiniteDuration,
@@ -96,7 +98,7 @@ object ResourcePool {
       partitions = partitions.max(1))
   }
 
-  private def of0[F[_]: Async, A](
+  private def of0[F[_]: Concurrent: Timer, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
     resource: Id => Resource[F, A]
@@ -109,7 +111,7 @@ object ResourcePool {
     type Task = Deferred[F, Either[Throwable, (Id, Entry)]]
     type Tasks = Queue[Task]
 
-    def now = Temporal[F].realTime
+    def now = Clock[F].realTime(TimeUnit.MILLISECONDS).map { _.millis}
 
     final case class Entry(value: A, release: F[Unit], timestamp: FiniteDuration)
 
@@ -180,7 +182,7 @@ object ResourcePool {
                                   if (allocated.isEmpty && releasing.isEmpty) {
                                     released
                                       .complete(().asRight)
-                                      .void
+                                      .handleError { _ => () }
                                   } else {
                                     effect.productR {
                                       released
@@ -246,10 +248,10 @@ object ResourcePool {
               }
           }
         }
-      _ <- Async[F].background {
+      _ <- Concurrent[F].background {
         val interval = expireAfter / 10
         for {
-          _ <- Temporal[F].sleep(expireAfter)
+          _ <- Timer[F].sleep(expireAfter)
           a <- Async[F].foreverM[Unit, Unit] {
             for {
               now       <- now
@@ -316,7 +318,7 @@ object ResourcePool {
                         .pure[F]
                   }
               }
-              _ <- Temporal[F].sleep(interval)
+              _ <- Timer[F].sleep(interval)
             } yield result
           }
         } yield a
@@ -370,9 +372,7 @@ object ResourcePool {
                               apply(
                                 stage.copy(tasks = tasks)
                               ) {
-                                task
-                                  .complete((id, entry).asRight)
-                                  .void
+                                task.complete((id, entry).asRight)
                               }
                             }
                       }
@@ -415,9 +415,7 @@ object ResourcePool {
                             state.releasing,
                             tasks
                           ) {
-                            task
-                              .complete((id, entry).asRight)
-                              .void
+                            task.complete((id, entry).asRight)
                           }
                         }
 
@@ -527,7 +525,7 @@ object ResourcePool {
                                                                 state
                                                                   .released
                                                                   .complete(a.asRight)
-                                                                  .void
+                                                                  .handleError { _ => () }
                                                               } else {
                                                                 ().pure[F]
                                                               }
@@ -535,7 +533,7 @@ object ResourcePool {
                                                               state
                                                                 .released
                                                                 .complete(a.asLeft)
-                                                                .void
+                                                                .handleError { _ => () }
                                                           }
                                                           result1.map { _.asRight[Int] }
                                                         case false =>
@@ -608,11 +606,7 @@ object ResourcePool {
                                                     } {
                                                       stage
                                                         .tasks
-                                                        .foldMapM { task =>
-                                                          task
-                                                            .complete(a.asLeft)
-                                                            .void
-                                                        }
+                                                        .foldMapM { _.complete(a.asLeft) }
                                                     }
                                                 }
                                               } else {
@@ -645,17 +639,13 @@ object ResourcePool {
                                                 apply(Queue.empty) {
                                                   state
                                                     .tasks
-                                                    .foldMapM { task =>
-                                                      task
-                                                        .complete(a.asLeft)
-                                                        .void
-                                                    }
+                                                    .foldMapM { _.complete(a.asLeft) }
                                                     .productR {
                                                       if (state.releasing.isEmpty) {
                                                         state
                                                           .released
                                                           .complete(().asRight)
-                                                          .void
+                                                          .handleError { _ => () }
                                                       } else {
                                                         ().pure[F]
                                                       }
@@ -743,7 +733,8 @@ object ResourcePool {
         maxSize: Int,
         expireAfter: FiniteDuration,
       )(implicit
-        F: Async[F],
+        F: Concurrent[F],
+        timer: Timer[F],
       ): Resource[F, ResourcePool[F, A]] = {
         ResourcePool.of(maxSize, expireAfter, _ => self)
       }
@@ -753,7 +744,8 @@ object ResourcePool {
         partitions: Int,
         expireAfter: FiniteDuration,
       )(implicit
-        F: Async[F],
+        F: Concurrent[F],
+        timer: Timer[F],
       ): Resource[F, ResourcePool[F, A]] = {
         ResourcePool.of(maxSize = maxSize, partitions = partitions, expireAfter, _ => self)
       }
