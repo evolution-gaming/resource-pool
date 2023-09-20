@@ -129,6 +129,20 @@ object ResourcePool {
           releasing = Set.empty)
       }
 
+      /** Resource pool is allocated.
+        *
+        * @param id
+        *   Sequence number of a last resource allocated (used to generate an
+        *   identifier for a next resource).
+        * @param entries
+        *   Allocated or allocating resources.`Some(_)` means that resource is
+        *   allocated, and `None` means allocating is in progress.
+        * @param stage
+        *   Represents a state of a pool, i.e. if it is fully busy, if there are
+        *   free resources, and the tasks waiting for resources to be freed.
+        * @param releasing
+        *   List of ids being released because these have expired.
+        */
       final case class Allocated(
         id: Long,
         entries: Map[Id, Option[Entry]],
@@ -146,12 +160,38 @@ object ResourcePool {
 
           def busy(task: Task): Stage = Busy(Queue(task))
 
+          /** There are free resources to use.
+            *
+            * @param ids
+            *   List of ids from [[Allocated#Entries]] that are free to use.It
+            *   could be equal to `Nil` if all resources are busy, but there
+            *   are no tasks waiting in queue.
+            */
           final case class Free(ids: Ids) extends Stage
 
+          /** No more free resources to use, and tasks are waiting in queue.
+            *
+            * @param tasks
+            *   List of tasks waiting for resources to free up.
+            */
           final case class Busy(tasks: Tasks) extends Stage
         }
       }
 
+      /** Resource pool is being released.
+        *
+        * @param allocated
+        *   Allocated resources.
+        * @param releasing
+        *   List of ids being released (either because pool is releasing or
+        *   because these expired earlier).
+        * @param tasks
+        *   The list of tasks left to be completed before the pool could be
+        *   released.
+        * @param released
+        *   `Deferred`, which will be completed, when all the tasks are
+        *   completed and all resources are released.
+        */
       final case class Released(
         allocated: Set[Id],
         releasing: Set[Id],
@@ -453,6 +493,7 @@ object ResourcePool {
                   state.stage match {
                     case stage: State.Allocated.Stage.Free =>
                       stage.ids match {
+                        // there are free resources to use
                         case id :: ids =>
                           state
                             .entries
@@ -483,9 +524,11 @@ object ResourcePool {
                               }
                             }
 
+                        // no free resources found
                         case Nil =>
                           val entries = state.entries
                           if (entries.sizeCompare(maxSize) < 0) {
+                            // pool is not full, create a new resource
                             val id = state.id
                             apply {
                               state.copy(
@@ -674,6 +717,7 @@ object ResourcePool {
                                 }
                             }
                           } else {
+                            // pool is already full, add a task into a waiting queue
                             Deferred
                               .apply[F, Either[Throwable, (Id, Entry)]]
                               .flatMap { task =>
