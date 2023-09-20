@@ -75,14 +75,18 @@ object ResourcePool {
           values <- maxSize
             .divide(partitions)
             .traverse { maxSize => of(maxSize) }
-          values <- values.toVector.pure[Resource[F, *]]
+          values <- values
+            .toVector
+            .pure[Resource[F, *]]
           length  = values.length
         } yield {
           new ResourcePool[F, A] {
             def get = {
               for {
-                counter   <- ref.modify { a => (a + 1, a) }
-                partition  = (counter % length).abs
+                partition <- ref.modify { a =>
+                  val b = a + 1
+                  (if (b < length) b else 0, a)
+                }
                 result    <- values
                   .apply(partition)
                   .get
