@@ -2,7 +2,7 @@ package com.evolution.resourcepool
 
 import cats.Functor
 import cats.effect.concurrent.{Deferred, Ref}
-import cats.effect.{Async, Clock, Concurrent, Resource, Sync, Timer}
+import cats.effect.{Async, BracketThrow, Clock, Concurrent, Resource, Sync, Timer}
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.evolution.resourcepool.IntHelper._
@@ -719,6 +719,16 @@ object ResourcePool {
     }
   }
 
+  def const[F[_]: BracketThrow, A](value: Resource[F, A]): ResourcePool[F, A] = {
+    const(value.allocated)
+  }
+
+  def const[F[_], A](value: F[(A, Release[F])]): ResourcePool[F, A] = {
+    class Const
+    new Const with ResourcePool[F, A] {
+      def get = value
+    }
+  }
 
   final case object ReleasedError extends RuntimeException("released") with NoStackTrace
 
