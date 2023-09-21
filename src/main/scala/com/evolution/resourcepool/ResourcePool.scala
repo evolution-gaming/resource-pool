@@ -60,7 +60,7 @@ object ResourcePool {
 
     def apply(maxSize: Int, partitions: Int) = {
 
-      def of(maxSize: Int) = {
+      def of(maxSize: Int)(resource: Id => Resource[F, A]) = {
         of0(
           maxSize,
           expireAfter,
@@ -68,13 +68,14 @@ object ResourcePool {
       }
 
       if (partitions <= 1) {
-        of(maxSize)
+        of(maxSize)(resource)
       } else {
         for {
           ref    <- Ref[F].of(0).toResource
           values <- maxSize
             .divide(partitions)
-            .traverse { maxSize => of(maxSize) }
+            .zipWithIndex
+            .traverse { case (maxSize, idx) => of(maxSize) { id => resource(s"$idx-$id") } }
           values <- values
             .toVector
             .pure[Resource[F, *]]
