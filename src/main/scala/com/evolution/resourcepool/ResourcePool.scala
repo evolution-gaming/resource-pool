@@ -164,7 +164,7 @@ object ResourcePool {
         *   Sequence number of a last resource allocated (used to generate an
         *   identifier for a next resource).
         * @param entries
-        *   Allocated or allocating resources. `Some(_)` means that resource is
+        *   Allocated or allocating resources. `Some` means that resource is
         *   allocated, and `None` means allocating is in progress.
         * @param stage
         *   Represents a state of a pool, i.e. if it is fully busy, if there are
