@@ -32,3 +32,5 @@ licenses := Seq(("MIT", url("https://opensource.org/licenses/MIT")))
 releaseCrossBuild := true
 
 versionScheme := Some("early-semver")
+
+autoAPIMappings := true
