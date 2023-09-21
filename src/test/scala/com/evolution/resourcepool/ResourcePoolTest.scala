@@ -288,24 +288,25 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
   }
 
   test("not exceed `maxSize` with partitioned pool") {
-    val maxSize = 100
+    val maxSize = 10
     val resource = for {
-      ref  <- Ref[IO].of(0).toResource
+      ref  <- Ref[IO].of(List.empty[String]).toResource
       pool <- ResourcePool.of(
         maxSize = maxSize,
-        partitions = 10,
+        partitions = 3,
         expireAfter = 1.day,
-        resource = _ => ref.update { _ + 1 }.toResource
+        resource = id => ref.update { id :: _ }.toResource
       )
     } yield {
       for {
-        _ <- pool
+        _      <- pool
           .resource
           .use { _ => Temporal[IO].sleep(1.millis) }
           .parReplicateA(maxSize * 100)
           .map { _.combineAll }
         result <- ref.get
-        _ <- IO { result shouldEqual maxSize }
+        _      <- IO { result.size shouldEqual maxSize }
+        _      <- IO { result.toSet shouldEqual Set("2-3", "1-2", "1-0", "0-2", "1-1", "0-0", "2-2", "0-1", "2-0", "2-1") }
       } yield {}
     }
 
