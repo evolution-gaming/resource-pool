@@ -27,10 +27,6 @@ trait ResourcePool[F[_], A] {
   def get: F[(A, Release[F])]
 }
 
-/**
-  * TODO
-  * * cancellable
-  */
 object ResourcePool {
 
   type Release[F[_]] = F[Unit]
@@ -361,28 +357,22 @@ object ResourcePool {
                                   }
                             }
 
-                          if (stage.ids.sizeCompare(ids) == 0) {
-                            ()
-                              .asRight[Int]
-                              .pure[F]
-                          } else {
-                            set
-                              .apply {
-                                state.copy(
-                                  entries = entries,
-                                  stage = stage.copy(ids = ids.reverse),
-                                  releasing = releasing)
-                              }
-                              .flatMap {
-                                case true  =>
-                                  release.map { _.asRight[Int] }
-                                case false =>
-                                  (count + 1)
-                                    .asLeft[Unit]
-                                    .pure[F]
-                              }
-                              .uncancelable
-                          }
+                          set
+                            .apply {
+                              state.copy(
+                                entries   = entries,
+                                stage     = stage.copy(ids = ids.reverse),
+                                releasing = releasing)
+                            }
+                            .flatMap {
+                              case true  =>
+                                release.map { _.asRight[Int] }
+                              case false =>
+                                (count + 1)
+                                  .asLeft[Unit]
+                                  .pure[F]
+                            }
+                            .uncancelable
 
                         case _: State.Allocated.Stage.Busy =>
                           ()
@@ -546,7 +536,7 @@ object ResourcePool {
                             val id = state.id
                             apply {
                               state.copy(
-                                id = id + 1,
+                                id      = id + 1,
                                 entries = state.entries.updated(id, none))
                             } {
                               resource

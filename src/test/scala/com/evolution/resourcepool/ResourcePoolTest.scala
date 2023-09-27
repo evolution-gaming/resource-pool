@@ -356,36 +356,81 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       .run()
   }
 
-  ignore("cancel `get`") {
+  test("cancel `get` while allocating resource") {
     val result = for {
-      deferred0 <- Deferred[IO, Unit]
-      deferred1 <- Deferred[IO, Unit]
-      result    <- ResourcePool
-        .of(
+      deferred0 <- Deferred[IO, Unit].toResource
+      deferred1 <- Deferred[IO, Unit].toResource
+      pool      <- ResourcePool.of(
+        maxSize = 1,
+        expireAfter = 1.day,
+        resource = _ => deferred0
+          .complete(())
+          .productR { deferred1.get }
+          .toResource
+      )
+    } yield {
+      for {
+        fiber0 <- pool
+          .resource
+          .use { _ => IO.never[Unit] }
+          .start
+        result <- fiber0
+          .joinWithNever
+          .timeout(10.millis)
+          .attempt
+        _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
+        fiber1 <- pool
+          .resource
+          .use { _.pure[IO] }
+          .start
+        _      <- deferred0.get
+        fiber2 <- fiber0.cancel.start
+        _      <- deferred1.complete(())
+        _      <- fiber1.joinWithNever
+        _      <- fiber2.joinWithNever
+      } yield {}
+    }
+    result
+      .use(identity)
+      .run()
+  }
+
+  test("cancel `get` while waiting in queue") {
+    val result = for {
+      deferred0 <- Deferred[IO, Unit].toResource
+      pool      <- ResourcePool.of(
           maxSize = 1,
           expireAfter = 1.day,
-          resource = _ => deferred0
-            .complete(())
-            .productR { deferred1.get }
-            .toResource
+          resource = _ => ().pure[Resource[IO, *]]
         )
-        .allocated
-      (pool, release) = result
-      fiber0    <- pool
-        .get
-        .start
-      result    <- fiber0
-        .joinWithNever
-        .timeout(10.millis)
-        .attempt
-      _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
-      _      <- deferred0.get
-      fiber1 <- fiber0.cancel.start
-      _      <- deferred1.complete(())
-      _      <- fiber1.join
-      _      <- release
-    } yield {}
-    result.run()
+    } yield {
+      for {
+        fiber0 <- pool
+          .resource
+          .use { _ =>
+            deferred0
+              .complete(())
+              .productR { IO.never[Unit] }
+          }
+          .start
+        _      <- deferred0.get
+        fiber1 <- pool
+          .resource
+          .use { _ => IO.never[Unit] }
+          .start
+        result <- fiber1
+          .joinWithNever
+          .timeout(10.millis)
+          .attempt
+        _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
+        fiber2 <- fiber1.cancel.start
+        _      <- fiber0.cancel
+        _      <- fiber2.joinWithNever
+      } yield {}
+    }
+    result
+      .use(identity)
+      .run()
   }
 
   test("cancel `resource.use") {
