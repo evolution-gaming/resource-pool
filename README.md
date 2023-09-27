@@ -13,6 +13,7 @@ Pool of [cats-effect](https://typelevel.org/cats-effect/) resources
 * uses first-in-first-out queue for tasks
 * shuts down gracefully after completing accumulated tasks
 * tolerates resource failures
+* supports cancellation of `resouce.use` 
 
 ## Example 
 
@@ -44,5 +45,5 @@ connection
 ```scala
 addSbtPlugin("com.evolution" % "sbt-artifactory-plugin" % "0.0.2")
 
-libraryDependencies += "com.evolution" %% "resource-pool" % "0.0.1"
+libraryDependencies += "com.evolution" %% "resource-pool" % "0.0.3"
 ```
