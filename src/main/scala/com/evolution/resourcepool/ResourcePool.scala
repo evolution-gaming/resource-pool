@@ -43,6 +43,7 @@ object ResourcePool {
   def of[F[_]: Concurrent: Timer: Parallel, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
+    discardTasksOnRelease: Boolean,
     resource: Id => Resource[F, A]
   ): Resource[F, ResourcePool[F, A]] = {
 
@@ -55,6 +56,7 @@ object ResourcePool {
           maxSize = maxSize,
           partitions = (maxSize / 100).min(cpus),
           expireAfter,
+          discardTasksOnRelease,
           resource)
       } yield result
     }
@@ -80,6 +82,7 @@ object ResourcePool {
     maxSize: Int,
     partitions: Int,
     expireAfter: FiniteDuration,
+    discardTasksOnRelease: Boolean,
     resource: Id => Resource[F, A]
   ): Resource[F, ResourcePool[F, A]] = {
 
@@ -89,6 +92,7 @@ object ResourcePool {
         of0(
           maxSize,
           expireAfter,
+          discardTasksOnRelease,
           resource)
       }
 
@@ -134,6 +138,7 @@ object ResourcePool {
   private def of0[F[_]: Concurrent: Timer, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
+    discardTasksOnRelease: Boolean,
     resource: Id => Resource[F, A]
   ): Resource[F, ResourcePool[F, A]] = {
 
@@ -306,12 +311,28 @@ object ResourcePool {
                           }
 
                         case stage: State.Allocated.Stage.Busy =>
-                          apply(
-                            allocated = state.entries.keySet,
-                            releasing = state.releasing,
-                            stage.tasks
-                          ) {
-                            ().pure[F]
+                          if (discardTasksOnRelease) {
+                            apply(
+                              allocated = state.entries.keySet,
+                              releasing = state.releasing,
+                              Queue.empty
+                            ) {
+                              stage
+                                .tasks
+                                .foldMapM { task =>
+                                  task
+                                    .complete(ReleasedError.asLeft)
+                                    .void
+                                }
+                            }
+                          } else {
+                            apply(
+                              allocated = state.entries.keySet,
+                              releasing = state.releasing,
+                              stage.tasks
+                            ) {
+                              ().pure[F]
+                            }
                           }
                       }
                     }
@@ -769,7 +790,26 @@ object ResourcePool {
         timer: Timer[F],
         parallel: Parallel[F]
       ): Resource[F, ResourcePool[F, A]] = {
-        ResourcePool.of(maxSize, expireAfter, _ => self)
+        toResourcePool(maxSize, expireAfter, discardTasksOnRelease = false)
+      }
+
+      /** Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a
+        * shorter syntax to create a pool out of existing resource.
+        */
+      def toResourcePool(
+        maxSize: Int,
+        expireAfter: FiniteDuration,
+        discardTasksOnRelease: Boolean,
+      )(implicit
+        F: Concurrent[F],
+        timer: Timer[F],
+        parallel: Parallel[F]
+      ): Resource[F, ResourcePool[F, A]] = {
+        ResourcePool.of(
+          maxSize,
+          expireAfter,
+          discardTasksOnRelease,
+          _ => self)
       }
 
       /** Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but provides a
@@ -779,12 +819,18 @@ object ResourcePool {
         maxSize: Int,
         partitions: Int,
         expireAfter: FiniteDuration,
+        discardTasksOnRelease: Boolean,
       )(implicit
         F: Concurrent[F],
         timer: Timer[F],
         parallel: Parallel[F]
       ): Resource[F, ResourcePool[F, A]] = {
-        ResourcePool.of(maxSize = maxSize, partitions = partitions, expireAfter, _ => self)
+        ResourcePool.of(
+          maxSize,
+          partitions,
+          expireAfter,
+          discardTasksOnRelease,
+          _ => self)
       }
     }
   }
