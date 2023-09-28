@@ -419,7 +419,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
           .start
         result <- fiber1
           .joinWithNever
-          .timeout(100.millis)
+          .timeout(10.millis)
           .attempt
         _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
         _      <- fiber1.cancel
