@@ -1,6 +1,6 @@
 package com.evolution.resourcepool
 
-import cats.{Functor, Parallel}
+import cats.Functor
 import cats.effect.{Async, Deferred, MonadCancel, MonadCancelThrow, Poll, Ref, Resource, Sync, Temporal}
 import cats.effect.syntax.all._
 import cats.syntax.all._
@@ -37,9 +37,10 @@ object ResourcePool {
     * determined automatically by taking into account the number of available
     * processors and expected pool size.
     */
-  def of[F[_]: Async: Parallel, A](
+  def of[F[_]: Async, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
+    discardTasksOnRelease: Boolean,
     resource: Id => Resource[F, A]
   ): Resource[F, ResourcePool[F, A]] = {
 
@@ -52,6 +53,7 @@ object ResourcePool {
           maxSize = maxSize,
           partitions = (maxSize / 100).min(cpus),
           expireAfter,
+          discardTasksOnRelease,
           resource)
       } yield result
     }
@@ -73,10 +75,11 @@ object ResourcePool {
     *   Factory for creating the new resources. `Id` is a unique identifier of a
     *   resource that could be used, for example, for logging purposes.
     */
-  def of[F[_]: Async: Parallel, A](
+  def of[F[_]: Async, A](
     maxSize: Int,
     partitions: Int,
     expireAfter: FiniteDuration,
+    discardTasksOnRelease: Boolean,
     resource: Id => Resource[F, A]
   ): Resource[F, ResourcePool[F, A]] = {
 
@@ -86,6 +89,7 @@ object ResourcePool {
         of0(
           maxSize,
           expireAfter,
+          discardTasksOnRelease,
           resource)
       }
 
@@ -131,6 +135,7 @@ object ResourcePool {
   private def of0[F[_]: Async, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
+    discardTasksOnRelease: Boolean,
     resource: Id => Resource[F, A]
   ): Resource[F, ResourcePool[F, A]] = {
 
@@ -303,12 +308,28 @@ object ResourcePool {
                           }
 
                         case stage: State.Allocated.Stage.Busy =>
-                          apply(
-                            allocated = state.entries.keySet,
-                            releasing = state.releasing,
-                            stage.tasks
-                          ) {
-                            ().pure[F]
+                          if (discardTasksOnRelease) {
+                            apply(
+                              allocated = state.entries.keySet,
+                              releasing = state.releasing,
+                              Queue.empty
+                            ) {
+                              stage
+                                .tasks
+                                .foldMapM { task =>
+                                  task
+                                    .complete(ReleasedError.asLeft)
+                                    .void
+                                }
+                            }
+                          } else {
+                            apply(
+                              allocated = state.entries.keySet,
+                              releasing = state.releasing,
+                              stage.tasks
+                            ) {
+                              ().pure[F]
+                            }
                           }
                       }
                     }
@@ -775,9 +796,25 @@ object ResourcePool {
         expireAfter: FiniteDuration,
       )(implicit
         F: Async[F],
-        P: Parallel[F]
       ): Resource[F, ResourcePool[F, A]] = {
-        ResourcePool.of(maxSize, expireAfter, _ => self)
+        toResourcePool(maxSize, expireAfter, discardTasksOnRelease = false)
+      }
+
+      /** Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a
+        * shorter syntax to create a pool out of existing resource.
+        */
+      def toResourcePool(
+        maxSize: Int,
+        expireAfter: FiniteDuration,
+        discardTasksOnRelease: Boolean,
+      )(implicit
+        F: Async[F],
+      ): Resource[F, ResourcePool[F, A]] = {
+        ResourcePool.of(
+          maxSize,
+          expireAfter,
+          discardTasksOnRelease,
+          _ => self)
       }
 
       /** Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but provides a
@@ -787,11 +824,16 @@ object ResourcePool {
         maxSize: Int,
         partitions: Int,
         expireAfter: FiniteDuration,
+        discardTasksOnRelease: Boolean,
       )(implicit
         F: Async[F],
-        P: Parallel[F]
       ): Resource[F, ResourcePool[F, A]] = {
-        ResourcePool.of(maxSize = maxSize, partitions = partitions, expireAfter, _ => self)
+        ResourcePool.of(
+          maxSize,
+          partitions,
+          expireAfter,
+          discardTasksOnRelease,
+          _ => self)
       }
     }
   }
