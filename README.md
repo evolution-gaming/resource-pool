@@ -13,7 +13,7 @@ Pool of [cats-effect](https://typelevel.org/cats-effect/) resources
 * uses first-in-first-out queue for tasks
 * shuts down gracefully after completing accumulated tasks
 * tolerates resource failures
-* supports cancellation of `resouce.use` 
+* supports cancellation 
 
 ## Example 
 

@@ -1,7 +1,7 @@
 package com.evolution.resourcepool
 
 import cats.Functor
-import cats.effect.{Async, MonadCancelThrow, Resource, Temporal, Deferred, Ref, Sync}
+import cats.effect.{Async, Deferred, MonadCancel, MonadCancelThrow, Poll, Ref, Resource, Sync, Temporal}
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.evolution.resourcepool.IntHelper._
@@ -466,18 +466,21 @@ object ResourcePool {
               .flatMap {
                 case (state: State.Allocated, set) =>
 
-                  def apply[X](state: State.Allocated)(effect: => F[X]) = {
-                    set
-                      .apply(state)
-                      .flatMap {
-                        case true  =>
-                          effect.map { _.asRight[Int] }
-                        case false =>
-                          (count + 1)
-                            .asLeft[X]
-                            .pure[F]
-                      }
-                      .uncancelable
+                  def apply[X](state: State.Allocated)(effect: Poll[F] => F[X]) = {
+                    MonadCancel[F].uncancelable { poll =>
+                      set
+                        .apply(state)
+                        .flatMap {
+                          case true  =>
+                            effect
+                              .apply(poll)
+                              .map { _.asRight[Int] }
+                          case false =>
+                            (count + 1)
+                              .asLeft[X]
+                              .pure[F]
+                        }
+                    }
                   }
 
                   def enqueue(tasks: Tasks) = {
@@ -486,9 +489,30 @@ object ResourcePool {
                       .flatMap { task =>
                         apply {
                           state.copy(stage = State.Allocated.Stage.busy(tasks.enqueue(task)))
-                        } {
-                          task
-                            .get
+                        } { poll =>
+                          poll
+                            .apply { task.get }
+                            .onCancel {
+                              ref.update {
+                                case state: State.Allocated =>
+                                  state.stage match {
+                                    case _: State.Allocated.Stage.Free     =>
+                                      state
+                                    case stage: State.Allocated.Stage.Busy =>
+                                      state.copy(
+                                        stage = stage.copy(
+                                          tasks = stage
+                                            .tasks
+                                            .filter { _ ne task }))
+                                  }
+
+                                case state: State.Released =>
+                                  state.copy(tasks =
+                                    state
+                                      .tasks
+                                      .filter { _ ne task })
+                              }
+                            }
                             .rethrow
                             .map { case (id, entry) =>
                               (entry.value, releaseOf(id, entry))
@@ -521,7 +545,7 @@ object ResourcePool {
                                         entry0
                                           .copy(timestamp = timestamp)
                                           .some))
-                                  } {
+                                  } { _ =>
                                     (entry0.value, releaseOf(id, entry)).pure[F]
                                   }
                                 }
@@ -538,7 +562,7 @@ object ResourcePool {
                               state.copy(
                                 id      = id + 1,
                                 entries = state.entries.updated(id, none))
-                            } {
+                            } { _ =>
                               resource
                                 .apply(id.toString)
                                 .allocated

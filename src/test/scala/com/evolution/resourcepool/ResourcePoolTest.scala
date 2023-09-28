@@ -415,17 +415,15 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
           .start
         _      <- deferred0.get
         fiber1 <- pool
-          .resource
-          .use { _ => IO.never[Unit] }
+          .get
           .start
         result <- fiber1
           .joinWithNever
-          .timeout(10.millis)
+          .timeout(100.millis)
           .attempt
         _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
-        fiber2 <- fiber1.cancel.start
+        _      <- fiber1.cancel
         _      <- fiber0.cancel
-        _      <- fiber2.joinWithNever
       } yield {}
     }
     result
