@@ -1,6 +1,6 @@
 package com.evolution.resourcepool
 
-import cats.Functor
+import cats.{Functor, Parallel}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Async, BracketThrow, Clock, Concurrent, Resource, Sync, Timer}
 import cats.effect.syntax.all._
@@ -40,7 +40,7 @@ object ResourcePool {
     * determined automatically by taking into account the number of available
     * processors and expected pool size.
     */
-  def of[F[_]: Concurrent: Timer, A](
+  def of[F[_]: Concurrent: Timer: Parallel, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
     resource: Id => Resource[F, A]
@@ -76,7 +76,7 @@ object ResourcePool {
     *   Factory for creating the new resources. `Id` is a unique identifier of a
     *   resource that could be used, for example, for logging purposes.
     */
-  def of[F[_]: Concurrent: Timer, A](
+  def of[F[_]: Concurrent: Timer: Parallel, A](
     maxSize: Int,
     partitions: Int,
     expireAfter: FiniteDuration,
@@ -100,7 +100,7 @@ object ResourcePool {
           values <- maxSize
             .divide(partitions)
             .zipWithIndex
-            .traverse { case (maxSize, idx) => of(maxSize) { id => resource(s"$idx-$id") } }
+            .parTraverse { case (maxSize, idx) => of(maxSize) { id => resource(s"$idx-$id") } }
           values <- values
             .toVector
             .pure[Resource[F, *]]
@@ -767,6 +767,7 @@ object ResourcePool {
       )(implicit
         F: Concurrent[F],
         timer: Timer[F],
+        parallel: Parallel[F]
       ): Resource[F, ResourcePool[F, A]] = {
         ResourcePool.of(maxSize, expireAfter, _ => self)
       }
@@ -781,6 +782,7 @@ object ResourcePool {
       )(implicit
         F: Concurrent[F],
         timer: Timer[F],
+        parallel: Parallel[F]
       ): Resource[F, ResourcePool[F, A]] = {
         ResourcePool.of(maxSize = maxSize, partitions = partitions, expireAfter, _ => self)
       }
