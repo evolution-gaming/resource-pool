@@ -66,7 +66,7 @@ object ResourcePool {
     * @param maxSize
     *   Maximum size of the whole pool.
     * @param partitions
-    *   Number of paritions to be used. This number determines the count of the
+    *   Number of partitions to be used. This number determines the count of the
     *   threads, that could access the pool in parallel, and also number of
     *   background processes removing the expiring entries.
     * @param expireAfter
