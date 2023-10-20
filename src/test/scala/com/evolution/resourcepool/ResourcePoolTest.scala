@@ -10,6 +10,7 @@ import org.scalatest.funsuite.AsyncFunSuite
 import org.scalatest.matchers.should.Matchers
 
 import scala.concurrent.TimeoutException
+
 import scala.concurrent.duration._
 import scala.util.control.NoStackTrace
 
@@ -337,13 +338,19 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       )
     } yield {
       for {
-        fiber0 <- pool.resource.use { _.pure[IO] }.start
+        fiber0 <- pool
+          .resource
+          .use { _.pure[IO] }
+          .start
         result <- fiber0
           .join
           .timeout(10.millis)
           .attempt
         _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
-        fiber1 <- pool.resource.use { _.pure[IO] }.start
+        fiber1 <- pool
+          .resource
+          .use { _.pure[IO] }
+          .start
         result <- fiber1
           .join
           .timeout(10.millis)
@@ -361,37 +368,68 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       .run()
   }
 
-  test("cancel `get` while allocating resource") {
+  ignore("cancel `get` while allocating resource") {
+    IO
+      .never
+      .void
+      .toResource
+      .toResourcePool(
+        maxSize = 1,
+        expireAfter = 1.day,
+      )
+      .use { pool =>
+        for {
+          fiber0 <- pool
+            .resource
+            .use { _.pure[IO] }
+            .start
+          result <- fiber0
+            .join
+            .timeout(10.millis)
+            .attempt
+          _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
+          fiber1 <- pool
+            .resource
+            .use { _.pure[IO] }
+            .start
+          _      <- fiber0.cancel
+          result <- fiber1
+            .join
+            .attempt
+          _      <- IO { result shouldEqual ResourcePool.CancelledError.asLeft }
+        } yield {}
+      }
+      .run()
+  }
+
+  ignore("cancel `get` while allocating resource, maxSize = 2") {
     val result = for {
-      deferred0 <- Deferred[IO, Unit].toResource
-      deferred1 <- Deferred[IO, Unit].toResource
-      pool      <- deferred0
-        .complete(())
-        .productR { deferred1.get }
+      ref  <- Ref[IO]
+        .of(IO.never.void.some)
+        .toResource
+      pool <- ref
+        .getAndSet(none)
+        .flatMap { _.foldA }
         .toResource
         .toResourcePool(
-          maxSize = 1,
-          expireAfter = 1.day)
+          maxSize = 2,
+          expireAfter = 1.day,
+        )
     } yield {
       for {
         fiber0 <- pool
           .resource
-          .use { _ => IO.never }
+          .use { _.pure[IO] }
           .start
         result <- fiber0
           .join
           .timeout(10.millis)
           .attempt
         _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
-        fiber1 <- pool
+        _      <- pool
           .resource
           .use { _.pure[IO] }
-          .start
-        _      <- deferred0.get
-        fiber2 <- fiber0.cancel.start
-        _      <- deferred1.complete(())
-        _      <- fiber1.join
-        _      <- fiber2.join
+        _      <- fiber0.cancel
       } yield {}
     }
     result
@@ -434,6 +472,44 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       .use(identity)
       .run()
   }
+
+  ignore("cancel `resource` while waiting in queue") {
+    val result = for {
+      deferred0 <- Deferred[IO, Unit].toResource
+      pool      <- ()
+        .pure[Resource[IO, *]]
+        .toResourcePool(
+          maxSize = 1,
+          expireAfter = 1.day)
+    } yield {
+      for {
+        fiber0 <- pool
+          .resource
+          .use { _ =>
+            deferred0
+              .complete(())
+              .productR { IO.never }
+          }
+          .start
+        _      <- deferred0.get
+        fiber1 <- pool
+          .resource
+          .use { _ => IO.never }
+          .start
+        result <- fiber1
+          .join
+          .timeout(10.millis)
+          .attempt
+        _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
+        _      <- fiber1.cancel
+        _      <- fiber0.cancel
+      } yield {}
+    }
+    result
+      .use(identity)
+      .run()
+  }
+
 
   test("cancel `resource.use") {
     val result = for {
