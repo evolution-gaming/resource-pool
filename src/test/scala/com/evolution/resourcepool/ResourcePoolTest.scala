@@ -473,7 +473,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       .run()
   }
 
-  ignore("cancel `resource` while waiting in queue") {
+  test("cancel `resource` while waiting in queue") {
     val result = for {
       deferred0 <- Deferred[IO, Unit].toResource
       pool      <- ()
@@ -501,7 +501,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
           .timeout(10.millis)
           .attempt
         _      <- IO { result should matchPattern { case Left(_: TimeoutException) => } }
-        _      <- fiber1.cancel
+        _      <- fiber1.cancel.start
         _      <- fiber0.cancel
       } yield {}
     }
