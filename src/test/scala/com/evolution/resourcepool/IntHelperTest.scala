@@ -1,7 +1,7 @@
 package com.evolution.resourcepool
 
 import org.scalatest.funsuite.AnyFunSuite
-import com.evolution.resourcepool.IntHelper._
+import com.evolution.resourcepool.IntHelper.*
 import org.scalatest.matchers.should.Matchers
 
 class IntHelperTest extends AnyFunSuite with Matchers {

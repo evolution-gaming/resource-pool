@@ -3,9 +3,9 @@ package com.evolution.resourcepool
 import cats.Functor
 import cats.effect.kernel.Resource.ExitCase
 import cats.effect.{Async, Deferred, MonadCancel, MonadCancelThrow, Ref, Resource, Sync, Temporal}
-import cats.effect.syntax.all._
-import cats.syntax.all._
-import com.evolution.resourcepool.IntHelper._
+import cats.effect.syntax.all.*
+import cats.syntax.all.*
+import com.evolution.resourcepool.IntHelper.*
 
 import scala.collection.immutable.Queue
 import scala.concurrent.duration.FiniteDuration

@@ -3,10 +3,10 @@ package com.evolution.resourcepool.util
 import cats.Applicative
 import cats.effect.unsafe.implicits.global
 import cats.effect.{IO, Resource}
-import cats.syntax.all._
+import cats.syntax.all.*
 import org.scalatest.Succeeded
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
 
 object IOSuite {
