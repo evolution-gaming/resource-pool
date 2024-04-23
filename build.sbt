@@ -8,8 +8,8 @@ organizationHomepage := Some(url("https://evolution.com"))
 homepage := Some(url("https://github.com/evolution-gaming/resource-pool"))
 startYear := Some(2023)
 
-scalaVersion := crossScalaVersions.value.head
 crossScalaVersions := Seq("2.13.13")
+scalaVersion := crossScalaVersions.value.head
 scalacOptions := Seq(
   "-release:17",
   "-Xsource:3-cross",
@@ -26,3 +26,5 @@ libraryDependencies ++= Seq(
 )
 
 licenses := Seq(("MIT", url("https://opensource.org/licenses/MIT")))
+
+addCommandAlias("build", "all compile test")
