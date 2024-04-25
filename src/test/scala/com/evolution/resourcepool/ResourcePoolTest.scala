@@ -1,16 +1,15 @@
 package com.evolution.resourcepool
 
-import cats.effect.kernel.{Concurrent, Ref}
-import cats.effect.syntax.all._
-import cats.effect.{Deferred, IO, Resource, Temporal}
-import com.evolution.resourcepool.util.IOSuite._
-import cats.syntax.all._
-import com.evolution.resourcepool.ResourcePool.implicits._
+import cats.effect.syntax.all.*
+import cats.effect.{Concurrent, Deferred, IO, Ref, Resource, Temporal}
+import cats.syntax.all.*
+import com.evolution.resourcepool.util.IOSuite.*
+import com.evolution.resourcepool.ResourcePool.implicits.*
 import org.scalatest.funsuite.AsyncFunSuite
 import org.scalatest.matchers.should.Matchers
 
 import scala.concurrent.TimeoutException
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 import scala.util.control.NoStackTrace
 
 class ResourcePoolTest extends AsyncFunSuite with Matchers {
@@ -315,7 +314,6 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       .run()
   }
 
-
   test("resource allocation fails after some time") {
     val error = new RuntimeException("error") with NoStackTrace
     val result = for {
@@ -503,7 +501,6 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
       .use(identity)
       .run()
   }
-
 
   test("cancel `resource.use") {
     val result = for {

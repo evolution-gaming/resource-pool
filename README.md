@@ -18,7 +18,7 @@ Pool of [cats-effect](https://typelevel.org/cats-effect/) resources
 ## Example 
 
 ```scala
-import com.evolution.resourcepool.ResourcePool.implicits._
+import com.evolution.resourcepool.ResourcePool.implicits.*
 
 trait Connection {
   def query(): IO[Any]
@@ -37,7 +37,6 @@ connection
         connection.query() // here you have access to the connection
       }
   }
-
 ```
 
 ## Setup
