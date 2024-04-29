@@ -17,11 +17,11 @@ jobs:
 
       - uses: coursier/cache-action@v6
 
-      - name: Setup Java
-        uses: actions/setup-java@v3
+      - name: setup Java and SBT
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin'
+          distribution: 'oracle'
           cache: 'sbt'
 
       - name: build ${{ matrix.scala }}
