@@ -13,6 +13,7 @@ scalaVersion := crossScalaVersions.value.head
 scalacOptions := Seq(
   "-release:17",
   "-Xsource:3-cross",
+  "-deprecation",
 )
 releaseCrossBuild := true
 autoAPIMappings := true
