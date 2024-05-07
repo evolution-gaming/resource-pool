@@ -8,11 +8,11 @@ organizationHomepage := Some(url("https://evolution.com"))
 homepage := Some(url("https://github.com/evolution-gaming/resource-pool"))
 startYear := Some(2023)
 
-crossScalaVersions := Seq("2.13.13")
+crossScalaVersions := Seq("2.13.14")
 scalaVersion := crossScalaVersions.value.head
 scalacOptions := Seq(
   "-release:17",
-  "-Xsource:3-cross",
+  "-Xsource:3",
   "-deprecation",
 )
 releaseCrossBuild := true
