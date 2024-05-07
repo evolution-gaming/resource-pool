@@ -35,7 +35,7 @@ jobs:
 
       - name: slack
         uses: homoluctus/slatify@master
-        if: failure() && github.ref == 'refs/heads/master'
+        if: failure() && github.ref == 'refs/heads/main'
         with:
           type: ${{ job.status }}
           job_name: Build
