@@ -40,4 +40,4 @@ addCommandAlias("build", "all compile test")
 
 // https://github.com/scalacenter/scalafix/issues/1488
 addCommandAlias("check", "scalafixAll --check; all scalafmtCheckAll scalafmtSbtCheck")
-addCommandAlias("fix", "scalafixAll; all scalafmtAll scalafmtSbt")
+addCommandAlias("fmt", "scalafixAll; all scalafmtAll scalafmtSbt")

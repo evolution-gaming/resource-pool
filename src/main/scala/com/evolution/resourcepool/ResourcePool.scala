@@ -146,7 +146,12 @@ object ResourcePool {
     object State {
 
       def empty: State =
-        Allocated(id = 0L, entries = Map.empty, stage = Allocated.Stage.free(List.empty), releasing = Set.empty)
+        Allocated(
+          id = 0L,
+          entries = Map.empty,
+          stage = Allocated.Stage.free(List.empty),
+          releasing = Set.empty,
+        )
 
       /** Resource pool is allocated.
         *
@@ -306,8 +311,7 @@ object ResourcePool {
                   }
 
               case (state: State.Released, _) =>
-                state.released.get.rethrow
-                  .map(_.asRight[Int])
+                state.released.get.rethrow.map(_.asRight[Int])
             }
         }
       }
@@ -562,16 +566,14 @@ object ResourcePool {
                   case stage: State.Allocated.Stage.Busy =>
                     state.copy(
                       stage = stage.copy(
-                        tasks = stage.tasks
-                          .filter(_ ne task),
+                        tasks = stage.tasks.filter(_ ne task),
                       ),
                     )
                 }
 
               case state: State.Released =>
-                state.copy(tasks =
-                  state.tasks
-                    .filter(_ ne task),
+                state.copy(
+                  tasks = state.tasks.filter(_ ne task),
                 )
             }
 
