@@ -8,13 +8,21 @@ organizationHomepage := Some(url("https://evolution.com"))
 homepage := Some(url("https://github.com/evolution-gaming/resource-pool"))
 startYear := Some(2023)
 
-crossScalaVersions := Seq("2.13.14")
-scalaVersion := crossScalaVersions.value.head
-scalacOptions := Seq(
-  "-release:17",
-  "-Xsource:3",
-  "-deprecation",
+inThisBuild(
+  List(
+    crossScalaVersions := Seq("2.13.14"),
+    scalaVersion := crossScalaVersions.value.head,
+    scalacOptions := Seq(
+      "-release:17",
+      "-Xsource:3",
+      "-deprecation",
+      "-Wunused:imports",
+    ),
+    semanticdbEnabled := true,
+    semanticdbVersion := scalafixSemanticdb.revision,
+  ),
 )
+
 releaseCrossBuild := true
 autoAPIMappings := true
 versionScheme := Some("early-semver")
@@ -29,3 +37,7 @@ libraryDependencies ++= Seq(
 licenses := Seq(("MIT", url("https://opensource.org/licenses/MIT")))
 
 addCommandAlias("build", "all compile test")
+
+// https://github.com/scalacenter/scalafix/issues/1488
+addCommandAlias("check", "scalafixAll --check; all scalafmtCheckAll scalafmtSbtCheck")
+addCommandAlias("fix", "scalafixAll; all scalafmtAll scalafmtSbt")

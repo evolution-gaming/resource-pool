@@ -1,8 +1,8 @@
 package com.evolution.resourcepool
 
 import cats.Functor
+import cats.effect.*
 import cats.effect.kernel.Resource.ExitCase
-import cats.effect.{Async, Deferred, MonadCancel, MonadCancelThrow, Ref, Resource, Sync, Temporal}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import com.evolution.resourcepool.IntHelper.*
@@ -16,14 +16,12 @@ trait ResourcePool[F[_], A] {
 
   /** Returns the acquired resource, and a handle releasing it back to the pool.
     *
-    * Calling the handle will not release resource itself, but just make it
-    * available to be returned again, though resource may expire and be released
-    * if it stays unused for long enough.
+    * Calling the handle will not release resource itself, but just make it available to be returned again, though
+    * resource may expire and be released if it stays unused for long enough.
     *
-    * The resource leak may occur if the release handle is never called.
-    * Therefore it is recommended to use
-    * [[ResourcePool.ResourcePoolOps#resource]] method instead, which will
-    * return [[cats.effect.Resource]] calling the handle on release.
+    * The resource leak may occur if the release handle is never called. Therefore it is recommended to use
+    * [[ResourcePool.ResourcePoolOps#resource]] method instead, which will return [[cats.effect.Resource]] calling the
+    * handle on release.
     */
   def get: F[(A, Release[F])]
 }
@@ -34,30 +32,27 @@ object ResourcePool {
 
   type Id = String
 
-  /** Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but number of partitions is
-    * determined automatically by taking into account the number of available
-    * processors and expected pool size.
+  /** Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but number of partitions is determined automatically by taking
+    * into account the number of available processors and expected pool size.
     */
   def of[F[_]: Async, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
     discardTasksOnRelease: Boolean,
-    resource: Id => Resource[F, A]
+    resource: Id => Resource[F, A],
   ): Resource[F, ResourcePool[F, A]] = {
 
-    def apply(maxSize: Int) = {
+    def apply(maxSize: Int) =
       for {
-        cpus       <- Sync[F]
-          .delay { Runtime.getRuntime.availableProcessors() }
-          .toResource
-        result     <- of(
+        cpus <- Sync[F].delay(Runtime.getRuntime.availableProcessors()).toResource
+        result <- of(
           maxSize = maxSize,
           partitions = (maxSize / 100).min(cpus),
           expireAfter,
           discardTasksOnRelease,
-          resource)
+          resource,
+        )
       } yield result
-    }
 
     apply(maxSize.max(1))
   }
@@ -67,82 +62,70 @@ object ResourcePool {
     * @param maxSize
     *   Maximum size of the whole pool.
     * @param partitions
-    *   Number of partitions to be used. This number determines the count of the
-    *   threads, that could access the pool in parallel, and also number of
-    *   background processes removing the expiring entries.
+    *   Number of partitions to be used. This number determines the count of the threads, that could access the pool in
+    *   parallel, and also number of background processes removing the expiring entries.
     * @param expireAfter
     *   Duration after which the resource should be removed if unused.
     * @param resource
-    *   Factory for creating the new resources. `Id` is a unique identifier of a
-    *   resource that could be used, for example, for logging purposes.
+    *   Factory for creating the new resources. `Id` is a unique identifier of a resource that could be used, for
+    *   example, for logging purposes.
     */
   def of[F[_]: Async, A](
     maxSize: Int,
     partitions: Int,
     expireAfter: FiniteDuration,
     discardTasksOnRelease: Boolean,
-    resource: Id => Resource[F, A]
+    resource: Id => Resource[F, A],
   ): Resource[F, ResourcePool[F, A]] = {
 
     def apply(maxSize: Int, partitions: Int) = {
 
-      def of(maxSize: Int)(resource: Id => Resource[F, A]) = {
-        of0(
-          maxSize,
-          expireAfter,
-          discardTasksOnRelease,
-          resource)
-      }
+      def of(maxSize: Int)(resource: Id => Resource[F, A]) =
+        of0(maxSize, expireAfter, discardTasksOnRelease, resource)
 
       if (partitions <= 1) {
         of(maxSize)(resource)
       } else {
         for {
-          ref    <- Ref[F].of(0).toResource
+          ref <- Ref[F].of(0).toResource
           values <- maxSize
             .divide(partitions)
             .zipWithIndex
-            .parTraverse { case (maxSize, idx) => of(maxSize) { id => resource(s"$idx-$id") } }
-          values <- values
-            .toVector
+            .parTraverse { case (maxSize, idx) => of(maxSize)(id => resource(s"$idx-$id")) }
+          values <- values.toVector
             .pure[Resource[F, *]]
-          length  = values.length
-        } yield {
-          new ResourcePool[F, A] {
-            def get = {
-              MonadCancel[F].uncancelable { poll =>
-                ref
-                  .modify { a =>
-                    val b = a + 1
-                    (
-                      if (b < length) b else 0,
-                      a
-                    )
+          length = values.length
+        } yield new ResourcePool[F, A] {
+          def get =
+            MonadCancel[F].uncancelable { poll =>
+              ref
+                .modify { a =>
+                  val b = a + 1
+                  (
+                    if (b < length) b else 0,
+                    a,
+                  )
+                }
+                .flatMap { partition =>
+                  poll {
+                    values
+                      .apply(partition)
+                      .get
                   }
-                  .flatMap { partition =>
-                    poll {
-                      values
-                        .apply(partition)
-                        .get
-                    }
-                  }
-              }
+                }
             }
-          }
         }
       }
     }
 
-    apply(
-      maxSize = maxSize.max(1),
-      partitions = partitions.max(1))
+    apply(maxSize = maxSize.max(1), partitions = partitions.max(1))
   }
 
   private def of0[F[_]: Async, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
     discardTasksOnRelease: Boolean,
-    resource: Id => Resource[F, A]
+    resource: Id => Resource[F, A],
   ): Resource[F, ResourcePool[F, A]] = {
 
     type Id = Long
@@ -155,32 +138,26 @@ object ResourcePool {
     def now = Temporal[F].realTime
 
     final case class Entry(value: A, release: F[Unit], timestamp: FiniteDuration) {
-      def renew: F[Entry] = now.map { now => copy(timestamp = now) }
+      def renew: F[Entry] = now.map(now => copy(timestamp = now))
     }
 
     sealed trait State
 
     object State {
 
-      def empty: State = {
-        Allocated(
-          id = 0L,
-          entries = Map.empty,
-          stage = Allocated.Stage.free(List.empty),
-          releasing = Set.empty)
-      }
+      def empty: State =
+        Allocated(id = 0L, entries = Map.empty, stage = Allocated.Stage.free(List.empty), releasing = Set.empty)
 
       /** Resource pool is allocated.
         *
         * @param id
-        *   Sequence number of a last resource allocated (used to generate an
-        *   identifier for a next resource).
+        *   Sequence number of a last resource allocated (used to generate an identifier for a next resource).
         * @param entries
-        *   Allocated or allocating resources. `Some` means that resource is
-        *   allocated, and `None` means allocating is in progress.
+        *   Allocated or allocating resources. `Some` means that resource is allocated, and `None` means allocating is
+        *   in progress.
         * @param stage
-        *   Represents a state of a pool, i.e. if it is fully busy, if there are
-        *   free resources, and the tasks waiting for resources to be freed.
+        *   Represents a state of a pool, i.e. if it is fully busy, if there are free resources, and the tasks waiting
+        *   for resources to be freed.
         * @param releasing
         *   List of ids being released because these have expired.
         */
@@ -188,7 +165,7 @@ object ResourcePool {
         id: Long,
         entries: Map[Id, Option[Entry]],
         stage: Allocated.Stage,
-        releasing: Set[Id]
+        releasing: Set[Id],
       ) extends State
 
       object Allocated {
@@ -204,9 +181,8 @@ object ResourcePool {
           /** There are free resources to use.
             *
             * @param ids
-            *   List of ids from [[Allocated#Entries]] that are free to use. It
-            *   could be equal to `Nil` if all resources are busy, but there
-            *   are no tasks waiting in queue.
+            *   List of ids from [[Allocated#Entries]] that are free to use. It could be equal to `Nil` if all resources
+            *   are busy, but there are no tasks waiting in queue.
             */
           final case class Free(ids: Ids) extends Stage
 
@@ -224,41 +200,36 @@ object ResourcePool {
         * @param allocated
         *   Allocated resources.
         * @param releasing
-        *   List of ids being released (either because pool is releasing or
-        *   because these expired earlier).
+        *   List of ids being released (either because pool is releasing or because these expired earlier).
         * @param tasks
-        *   The list of tasks left to be completed before the pool could be
-        *   released.
+        *   The list of tasks left to be completed before the pool could be released.
         * @param released
-        *   `Deferred`, which will be completed, when all the tasks are
-        *   completed and all resources are released.
+        *   `Deferred`, which will be completed, when all the tasks are completed and all resources are released.
         */
       final case class Released(
         allocated: Set[Id],
         releasing: Set[Id],
         tasks: Tasks,
-        released: Deferred[F, Either[Throwable, Unit]]
+        released: Deferred[F, Either[Throwable, Unit]],
       ) extends State
     }
 
     for {
       ref <- Resource.make {
-        Ref[F].of { State.empty }
+        Ref[F].of(State.empty)
       } { ref =>
         0.tailRecM { count =>
-          ref
-            .access
+          ref.access
             .flatMap {
               case (state: State.Allocated, set) =>
                 Deferred
                   .apply[F, Either[Throwable, Unit]]
                   .flatMap { released =>
-
-                    def apply(allocated: Set[Id], releasing: Set[Id], tasks: Tasks)(effect: => F[Unit]) = {
+                    def apply(allocated: Set[Id], releasing: Set[Id], tasks: Tasks)(effect: => F[Unit]) =
                       set
-                        .apply { State.Released(allocated = allocated, releasing = releasing, tasks, released) }
+                        .apply(State.Released(allocated = allocated, releasing = releasing, tasks, released))
                         .flatMap {
-                          case true  =>
+                          case true =>
                             for {
                               result <- {
                                 if (allocated.isEmpty && releasing.isEmpty) {
@@ -270,28 +241,22 @@ object ResourcePool {
                                   // the pool will be released elsewhere when all resources in `allocated` or
                                   // `releasing` get released
                                   effect.productR {
-                                    released
-                                      .get
-                                      .rethrow
+                                    released.get.rethrow
                                   }
                                 }
                               }
-                            } yield {
-                              result.asRight[Int]
-                            }
+                            } yield result.asRight[Int]
                           case false =>
                             (count + 1)
                               .asLeft[Unit]
                               .pure[F]
                         }
                         .uncancelable
-                    }
 
                     state.stage match {
                       case stage: State.Allocated.Stage.Free =>
                         // glue `release` functions of all free resources together
-                        val (entries, releasing, release) = stage
-                          .ids
+                        val (entries, releasing, release) = stage.ids
                           .foldLeft((state.entries, state.releasing, ().pure[F])) {
                             case ((entries, releasing, release), id) =>
                               entries
@@ -301,7 +266,7 @@ object ResourcePool {
                                 } {
                                   case Some(entry) =>
                                     (entries - id, releasing + id, release.productR(entry.release))
-                                  case None        =>
+                                  case None =>
                                     (entries, releasing, release)
                                 }
                           }
@@ -309,7 +274,7 @@ object ResourcePool {
                         apply(
                           allocated = entries.keySet,
                           releasing = releasing,
-                          Queue.empty
+                          Queue.empty,
                         ) {
                           release
                         }
@@ -319,10 +284,9 @@ object ResourcePool {
                           apply(
                             allocated = state.entries.keySet,
                             releasing = state.releasing,
-                            Queue.empty
+                            Queue.empty,
                           ) {
-                            stage
-                              .tasks
+                            stage.tasks
                               .foldMapM { task =>
                                 task
                                   .complete(ReleasedError.asLeft)
@@ -333,7 +297,7 @@ object ResourcePool {
                           apply(
                             allocated = state.entries.keySet,
                             releasing = state.releasing,
-                            stage.tasks
+                            stage.tasks,
                           ) {
                             ().pure[F]
                           }
@@ -342,31 +306,26 @@ object ResourcePool {
                   }
 
               case (state: State.Released, _) =>
-                state
-                  .released
-                  .get
-                  .rethrow
-                  .map { _.asRight[Int] }
+                state.released.get.rethrow
+                  .map(_.asRight[Int])
             }
         }
       }
-      _   <- Async[F].background {
+      _ <- Async[F].background {
         val interval = expireAfter / 10
         for {
           _ <- Temporal[F].sleep(expireAfter)
           a <- Async[F].foreverM[Unit, Unit] {
             for {
-              now       <- now
-              threshold  = now - expireAfter
-              result    <- 0.tailRecM { count =>
-                ref
-                  .access
+              now <- now
+              threshold = now - expireAfter
+              result <- 0.tailRecM { count =>
+                ref.access
                   .flatMap {
                     case (state: State.Allocated, set) =>
                       state.stage match {
                         case stage: State.Allocated.Stage.Free =>
-                          val (ids, entries, releasing, release) = stage
-                            .ids
+                          val (ids, entries, releasing, release) = stage.ids
                             .foldLeft((List.empty[Id], state.entries, state.releasing, ().pure[F])) {
                               case ((ids, entries, releasing, release), id) =>
                                 entries
@@ -380,7 +339,7 @@ object ResourcePool {
                                       } else {
                                         (id :: ids, entries, releasing, release)
                                       }
-                                    case None        =>
+                                    case None =>
                                       (ids, entries, releasing, release)
                                   }
                             }
@@ -388,13 +347,14 @@ object ResourcePool {
                           set
                             .apply {
                               state.copy(
-                                entries   = entries,
-                                stage     = stage.copy(ids = ids.reverse),
-                                releasing = releasing)
+                                entries = entries,
+                                stage = stage.copy(ids = ids.reverse),
+                                releasing = releasing,
+                              )
                             }
                             .flatMap {
-                              case true  =>
-                                release.map { _.asRight[Int] }
+                              case true =>
+                                release.map(_.asRight[Int])
                               case false =>
                                 (count + 1)
                                   .asLeft[Unit]
@@ -423,252 +383,216 @@ object ResourcePool {
       new ResourcePool[F, A] {
         def get = {
 
-          def entryAdd(id: Id, entry: Entry) = {
+          def entryAdd(id: Id, entry: Entry) =
             0.tailRecM { count =>
-              ref
-                .access
+              ref.access
                 .flatMap {
                   case (state: State.Allocated, set) =>
                     set
-                      .apply { state.copy(entries = state.entries.updated(id, entry.some)) }
+                      .apply(state.copy(entries = state.entries.updated(id, entry.some)))
                       .map {
-                        case true  => ().asRight[Int]
+                        case true => ().asRight[Int]
                         case false => (count + 1).asLeft[Unit]
                       }
-                  case (_: State.Released, _)        =>
+                  case (_: State.Released, _) =>
                     ()
                       .asRight[Int]
                       .pure[F]
                 }
             }
-          }
 
-          def entryRemove(id: Id, error: Throwable) = {
-            ref
-              .modify {
-                case state: State.Allocated =>
+          def entryRemove(id: Id, error: Throwable) =
+            ref.modify {
+              case state: State.Allocated =>
+                val entries = state.entries - id
 
-                  val entries = state.entries - id
+                def stateOf(stage: State.Allocated.Stage) =
+                  state.copy(entries = entries, stage = stage)
 
-                  def stateOf(stage: State.Allocated.Stage) = {
-                    state.copy(
-                      entries = entries,
-                      stage = stage)
+                if (entries.isEmpty) {
+                  state.stage match {
+                    case stage: State.Allocated.Stage.Free =>
+                      (
+                        stateOf(stage),
+                        ().pure[F],
+                      )
+                    case stage: State.Allocated.Stage.Busy =>
+                      (
+                        stateOf(State.Allocated.Stage.free(List.empty)),
+                        stage.tasks
+                          .foldMapM { task =>
+                            task
+                              .complete(error.asLeft)
+                              .void
+                          },
+                      )
                   }
+                } else {
+                  (
+                    stateOf(state.stage),
+                    ().pure[F],
+                  )
+                }
 
-                  if (entries.isEmpty) {
+              case state: State.Released =>
+                val allocated = state.allocated - id
+
+                def stateOf(tasks: Tasks) =
+                  state.copy(allocated = allocated, tasks = tasks)
+
+                if (allocated.isEmpty) {
+                  (
+                    stateOf(Queue.empty),
+                    state.tasks
+                      .foldMapM { task =>
+                        task
+                          .complete(error.asLeft)
+                          .void
+                      }
+                      .productR {
+                        if (state.releasing.isEmpty) {
+                          state.released
+                            .complete(().asRight)
+                            .void
+                        } else {
+                          ().pure[F]
+                        }
+                      },
+                  )
+                } else {
+                  (
+                    stateOf(state.tasks),
+                    ().pure[F],
+                  )
+                }
+            }.flatten
+
+          def entryRelease(id: Id, release: Release) =
+            for {
+              result <- release.attempt
+              result <- ref.modify {
+                case state: State.Allocated =>
+                  (
+                    state.copy(releasing = state.releasing - id),
+                    ().pure[F],
+                  )
+
+                case state: State.Released =>
+                  val releasing = state.releasing - id
+                  (
+                    state.copy(releasing = releasing),
+                    result match {
+                      case Right(a) =>
+                        if (releasing.isEmpty && state.allocated.isEmpty) {
+                          // this was the last resource in a pool,
+                          // we can release the pool itself now
+                          state.released
+                            .complete(a.asRight)
+                            .void
+                        } else {
+                          ().pure[F]
+                        }
+                      case Left(error) =>
+                        state.released
+                          .complete(error.asLeft)
+                          .void
+                    },
+                  )
+              }.flatten
+            } yield result
+
+          def releaseOf(id: Id, entry: Entry): Release =
+            for {
+              entry <- entry.renew
+              result <- ref
+                .modify {
+                  case state: State.Allocated =>
+                    def stateOf(stage: State.Allocated.Stage) =
+                      state.copy(entries = state.entries.updated(id, entry.some), stage = stage)
+
                     state.stage match {
                       case stage: State.Allocated.Stage.Free =>
                         (
-                          stateOf(stage),
-                          ().pure[F]
-                        )
-                      case stage: State.Allocated.Stage.Busy =>
-                        (
-                          stateOf(State.Allocated.Stage.free(List.empty)),
-                          stage
-                            .tasks
-                            .foldMapM { task =>
-                              task
-                                .complete(error.asLeft)
-                                .void
-                            }
-                        )
-                    }
-                  } else {
-                    (
-                      stateOf(state.stage),
-                      ().pure[F]
-                    )
-                  }
-
-                case state: State.Released =>
-
-                  val allocated = state.allocated - id
-
-                  def stateOf(tasks: Tasks) = {
-                    state.copy(
-                      allocated = allocated,
-                      tasks = tasks)
-                  }
-
-                  if (allocated.isEmpty) {
-                    (
-                      stateOf(Queue.empty),
-                      state
-                        .tasks
-                        .foldMapM { task =>
-                          task
-                            .complete(error.asLeft)
-                            .void
-                        }
-                        .productR {
-                          if (state.releasing.isEmpty) {
-                            state
-                              .released
-                              .complete(().asRight)
-                              .void
-                          } else {
-                            ().pure[F]
-                          }
-                        }
-                    )
-                  } else {
-                    (
-                      stateOf(state.tasks),
-                      ().pure[F]
-                    )
-                  }
-              }
-              .flatten
-          }
-
-          def entryRelease(id: Id, release: Release) = {
-            for {
-              result <- release.attempt
-              result <- ref
-                .modify {
-                  case state: State.Allocated =>
-                    (
-                      state.copy(releasing = state.releasing - id),
-                      ().pure[F]
-                    )
-
-                  case state: State.Released =>
-                    val releasing = state.releasing - id
-                    (
-                      state.copy(releasing = releasing),
-                      result match {
-                        case Right(a)    =>
-                          if (releasing.isEmpty && state.allocated.isEmpty) {
-                            // this was the last resource in a pool,
-                            // we can release the pool itself now
-                            state
-                              .released
-                              .complete(a.asRight)
-                              .void
-                          } else {
-                            ().pure[F]
-                          }
-                        case Left(error) =>
-                          state
-                            .released
-                            .complete(error.asLeft)
-                            .void
-                      }
-                    )
-                }
-                .flatten
-            } yield result
-          }
-
-          def releaseOf(id: Id, entry: Entry): Release = {
-            for {
-              entry  <- entry.renew
-              result <- ref
-                .modify {
-                  case state: State.Allocated =>
-
-                    def stateOf(stage: State.Allocated.Stage) = {
-                      state.copy(
-                        entries = state.entries.updated(id, entry.some),
-                        stage = stage)
-                    }
-
-                    state
-                      .stage match {
-                      case stage: State.Allocated.Stage.Free =>
-                        (
                           stateOf(stage.copy(ids = id :: stage.ids)),
-                          ().pure[F]
+                          ().pure[F],
                         )
                       case stage: State.Allocated.Stage.Busy =>
-                        stage
-                          .tasks
-                          .dequeueOption
+                        stage.tasks.dequeueOption
                           .fold {
                             (
                               stateOf(State.Allocated.Stage.free(List(id))),
-                              ().pure[F]
+                              ().pure[F],
                             )
                           } { case (task, tasks) =>
                             (
                               stateOf(stage.copy(tasks = tasks)),
                               task
                                 .complete((id, entry).asRight)
-                                .void
+                                .void,
                             )
                           }
                     }
 
                   case state: State.Released =>
-                    state
-                      .tasks
-                      .dequeueOption
+                    state.tasks.dequeueOption
                       .fold {
                         (
-                          state.copy(
-                            allocated = state.allocated - id,
-                            releasing = state.releasing + id),
-                          entry.release
+                          state.copy(allocated = state.allocated - id, releasing = state.releasing + id),
+                          entry.release,
                         )
                       } { case (task, tasks) =>
                         (
                           state.copy(tasks = tasks),
                           task
                             .complete((id, entry).asRight)
-                            .void
+                            .void,
                         )
                       }
                 }
                 .flatten
                 .uncancelable
             } yield result
-          }
 
-          def removeTask(task: Task) = {
+          def removeTask(task: Task) =
             ref.update {
               case state: State.Allocated =>
                 state.stage match {
-                  case _: State.Allocated.Stage.Free     =>
+                  case _: State.Allocated.Stage.Free =>
                     state
                   case stage: State.Allocated.Stage.Busy =>
                     state.copy(
                       stage = stage.copy(
-                        tasks = stage
-                          .tasks
-                          .filter { _ ne task }))
+                        tasks = stage.tasks
+                          .filter(_ ne task),
+                      ),
+                    )
                 }
 
               case state: State.Released =>
                 state.copy(tasks =
-                  state
-                    .tasks
-                    .filter { _ ne task })
+                  state.tasks
+                    .filter(_ ne task),
+                )
             }
-          }
 
           MonadCancel[F].uncancelable { poll =>
             0.tailRecM { count =>
-              ref
-                .access
+              ref.access
                 .flatMap {
                   case (state: State.Allocated, set) =>
-
-                    def apply[X](state: State.Allocated)(effect: => F[X]) = {
+                    def apply[X](state: State.Allocated)(effect: => F[X]) =
                       set
                         .apply(state)
                         .flatMap {
-                          case true  =>
-                            effect.map { _.asRight[Int] }
+                          case true =>
+                            effect.map(_.asRight[Int])
                           case false =>
                             (count + 1)
                               .asLeft[X]
                               .pure[F]
                         }
-                    }
 
-                    def enqueue(tasks: Tasks) = {
+                    def enqueue(tasks: Tasks) =
                       Deferred
                         .apply[F, Either[Throwable, (Id, Entry)]]
                         .flatMap { task =>
@@ -676,37 +600,37 @@ object ResourcePool {
                             state.copy(stage = State.Allocated.Stage.busy(tasks.enqueue(task)))
                           } {
                             poll
-                              .apply { task.get }
-                              .onCancel { removeTask(task) }
+                              .apply(task.get)
+                              .onCancel(removeTask(task))
                               .rethrow
                               .map { case (id, entry) =>
                                 (entry.value, releaseOf(id, entry))
                               }
                           }
                         }
-                    }
 
                     state.stage match {
                       case stage: State.Allocated.Stage.Free =>
                         stage.ids match {
                           // there are free resources to use
                           case id :: ids =>
-                            state
-                              .entries
+                            state.entries
                               .get(id)
                               .fold {
-                                IllegalStateError(s"entry is not found, id: $id").raiseError[F, Either[Int, (A, Release)]]
+                                IllegalStateError(s"entry is not found, id: $id")
+                                  .raiseError[F, Either[Int, (A, Release)]]
                               } { entry =>
                                 entry.fold {
-                                  IllegalStateError(s"entry is not defined, id: $id").raiseError[F, Either[Int, (A, Release)]]
+                                  IllegalStateError(s"entry is not defined, id: $id")
+                                    .raiseError[F, Either[Int, (A, Release)]]
                                 } { entry =>
-                                  entry
-                                    .renew
+                                  entry.renew
                                     .flatMap { entry =>
                                       apply {
                                         state.copy(
                                           stage = stage.copy(ids),
-                                          entries = state.entries.updated(id, entry.some))
+                                          entries = state.entries.updated(id, entry.some),
+                                        )
                                       } {
                                         (entry.value, releaseOf(id, entry)).pure[F]
                                       }
@@ -721,9 +645,7 @@ object ResourcePool {
                               // pool is not full, create a new resource
                               val id = state.id
                               apply {
-                                state.copy(
-                                  id = id + 1,
-                                  entries = state.entries.updated(id, none))
+                                state.copy(id = id + 1, entries = state.entries.updated(id, none))
                               } {
                                 poll
                                   .apply {
@@ -731,26 +653,23 @@ object ResourcePool {
                                       .apply(id.toString)
                                       .allocated
                                   }
-                                  .onCancel { entryRemove(id, CancelledError) }
+                                  .onCancel(entryRemove(id, CancelledError))
                                   .attempt
                                   .flatMap {
                                     case Right((value, release)) =>
                                       // resource was allocated
                                       for {
-                                        now   <- now
-                                        entry  = Entry(
-                                          value    = value,
-                                          release  = entryRelease(id, release)
-                                            .start
-                                            .void,
-                                          timestamp = now)
-                                        _     <- entryAdd(id, entry)
-                                      } yield {
-                                        (value, releaseOf(id, entry))
-                                      }
-                                    case Left(a)                 =>
+                                        now <- now
+                                        entry = Entry(
+                                          value = value,
+                                          release = entryRelease(id, release).start.void,
+                                          timestamp = now,
+                                        )
+                                        _ <- entryAdd(id, entry)
+                                      } yield (value, releaseOf(id, entry))
+                                    case Left(a) =>
                                       // resource failed to allocate
-                                      entryRemove(id, a).productR { a.raiseError[F, Result] }
+                                      entryRemove(id, a).productR(a.raiseError[F, Result])
                                   }
                               }
                             } else {
@@ -773,9 +692,8 @@ object ResourcePool {
     }
   }
 
-  def const[F[_]: MonadCancelThrow, A](value: Resource[F, A]): ResourcePool[F, A] = {
+  def const[F[_]: MonadCancelThrow, A](value: Resource[F, A]): ResourcePool[F, A] =
     const(value.allocated)
-  }
 
   def const[F[_], A](value: F[(A, Release[F])]): ResourcePool[F, A] = {
     class Const
@@ -790,41 +708,36 @@ object ResourcePool {
 
   final case class IllegalStateError(msg: String) extends RuntimeException(msg) with NoStackTrace
 
-
   implicit class ResourcePoolOps[F[_], A](val self: ResourcePool[F, A]) extends AnyVal {
 
-    /** Returns a `Resource`, which, when allocated, will take a resource from a
-      * pool.
+    /** Returns a `Resource`, which, when allocated, will take a resource from a pool.
       *
-      * When the `Resource` is released then the underlying resource is released
-      * back to the pool.
+      * When the `Resource` is released then the underlying resource is released back to the pool.
       */
-    def resource(implicit F: Functor[F]): Resource[F, A] = {
+    def resource(implicit F: Functor[F]): Resource[F, A] =
       Resource.applyFull { poll =>
         poll
-          .apply { self.get }
+          .apply(self.get)
           .map { case (a, release) => (a, (_: ExitCase) => release) }
       }
-    }
   }
 
   object implicits {
     implicit class ResourceOpsResourcePool[F[_], A](val self: Resource[F, A]) extends AnyVal {
 
-      /** Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a
-        * shorter syntax to create a pool out of existing resource.
+      /** Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a shorter syntax to create a pool out of
+        * existing resource.
         */
       def toResourcePool(
         maxSize: Int,
         expireAfter: FiniteDuration,
       )(implicit
         F: Async[F],
-      ): Resource[F, ResourcePool[F, A]] = {
+      ): Resource[F, ResourcePool[F, A]] =
         toResourcePool(maxSize, expireAfter, discardTasksOnRelease = false)
-      }
 
-      /** Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a
-        * shorter syntax to create a pool out of existing resource.
+      /** Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a shorter syntax to create a pool out of
+        * existing resource.
         */
       def toResourcePool(
         maxSize: Int,
@@ -832,16 +745,11 @@ object ResourcePool {
         discardTasksOnRelease: Boolean,
       )(implicit
         F: Async[F],
-      ): Resource[F, ResourcePool[F, A]] = {
-        ResourcePool.of(
-          maxSize,
-          expireAfter,
-          discardTasksOnRelease,
-          _ => self)
-      }
+      ): Resource[F, ResourcePool[F, A]] =
+        ResourcePool.of(maxSize, expireAfter, discardTasksOnRelease, _ => self)
 
-      /** Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but provides a
-        * shorter syntax to create a pool out of existing resource.
+      /** Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but provides a shorter syntax to create a pool out of
+        * existing resource.
         */
       def toResourcePool(
         maxSize: Int,
@@ -850,14 +758,8 @@ object ResourcePool {
         discardTasksOnRelease: Boolean,
       )(implicit
         F: Async[F],
-      ): Resource[F, ResourcePool[F, A]] = {
-        ResourcePool.of(
-          maxSize,
-          partitions,
-          expireAfter,
-          discardTasksOnRelease,
-          _ => self)
-      }
+      ): Resource[F, ResourcePool[F, A]] =
+        ResourcePool.of(maxSize, partitions, expireAfter, discardTasksOnRelease, _ => self)
     }
   }
 }
