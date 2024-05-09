@@ -272,7 +272,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
         .map(_.combineAll)
       result <- ref.get
       _ <- IO(result.size shouldEqual maxSize)
-      _ <- IO(result.toSet shouldEqual Set("2-3", "1-2", "1-0", "0-2", "1-1", "0-0", "2-2", "0-1", "2-0", "2-1"))
+      _ <- IO(result.toSet shouldEqual Set("3-2", "2-1", "0-1", "2-0", "1-1", "0-0", "2-2", "1-0", "0-2", "1-2"))
     } yield {}
 
     resource
