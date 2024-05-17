@@ -15,10 +15,10 @@ scalacOptions := Seq(
   "-Xsource:3",
   "-deprecation",
 )
-releaseCrossBuild := true
 autoAPIMappings := true
 versionScheme := Some("early-semver")
-publishTo := Some(Resolver.evolutionReleases)
+publishTo := Some(Resolver.evolutionReleases) // sbt-release
+versionPolicyIntention := Compatibility.BinaryCompatible // sbt-version-policy
 
 libraryDependencies += compilerPlugin(`kind-projector` cross CrossVersion.full)
 libraryDependencies ++= Seq(
@@ -28,4 +28,7 @@ libraryDependencies ++= Seq(
 
 licenses := Seq(("MIT", url("https://opensource.org/licenses/MIT")))
 
+//addCommandAlias("fmt", "scalafixAll; all scalafmtAll scalafmtSbt")
+//addCommandAlias("check", "scalafixEnable; scalafixAll --check; all versionPolicyCheck scalafmtCheckAll scalafmtSbtCheck")
+addCommandAlias("check", "versionPolicyCheck")
 addCommandAlias("build", "all compile test")
