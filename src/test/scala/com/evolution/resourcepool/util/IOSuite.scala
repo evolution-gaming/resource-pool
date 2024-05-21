@@ -14,9 +14,8 @@ object IOSuite {
 
   implicit val executor: ExecutionContextExecutor = ExecutionContext.global
 
-  def runIO[A](io: IO[A], timeout: FiniteDuration = Timeout): Future[Succeeded.type] = {
+  def runIO[A](io: IO[A], timeout: FiniteDuration = Timeout): Future[Succeeded.type] =
     io.timeout(timeout).as(Succeeded).unsafeToFuture()
-  }
 
   implicit class IOOps[A](val self: IO[A]) extends AnyVal {
 
@@ -25,8 +24,7 @@ object IOSuite {
 
   implicit class ResourceObjOps(val self: Resource.type) extends AnyVal {
 
-    def release[F[_]: Applicative](release: F[Unit]): Resource[F, Unit] = {
+    def release[F[_]: Applicative](release: F[Unit]): Resource[F, Unit] =
       Resource(((), release).pure[F])
-    }
   }
 }
