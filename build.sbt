@@ -8,22 +8,23 @@ organizationHomepage := Some(url("https://evolution.com"))
 homepage := Some(url("https://github.com/evolution-gaming/resource-pool"))
 startYear := Some(2023)
 
-crossScalaVersions := Seq("2.13.14")
+crossScalaVersions := Seq("2.13.14", "3.3.3")
 scalaVersion := crossScalaVersions.value.head
+releaseCrossBuild := true
 scalacOptions := Seq(
   "-release:17",
   "-Xsource:3",
-  "-deprecation",
+  "-deprecation"
 )
 autoAPIMappings := true
 versionScheme := Some("early-semver")
 publishTo := Some(Resolver.evolutionReleases) // sbt-release
 versionPolicyIntention := Compatibility.BinaryCompatible // sbt-version-policy
 
-libraryDependencies += compilerPlugin(`kind-projector` cross CrossVersion.full)
+
 libraryDependencies ++= Seq(
   `cats-effect`,
-  scalatest,
+  scalatest
 )
 
 licenses := Seq(("MIT", url("https://opensource.org/licenses/MIT")))

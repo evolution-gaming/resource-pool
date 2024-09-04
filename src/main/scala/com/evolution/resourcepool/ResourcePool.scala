@@ -83,7 +83,7 @@ object ResourcePool {
     discardTasksOnRelease: Boolean,
     resource: Id => Resource[F, A]
   ): Resource[F, ResourcePool[F, A]] = {
-
+    type ResourceF[+AA] = Resource[F, AA]
     def apply(maxSize: Int, partitions: Int) = {
 
       def of(maxSize: Int)(resource: Id => Resource[F, A]) = {
@@ -99,13 +99,13 @@ object ResourcePool {
       } else {
         for {
           ref    <- Ref[F].of(0).toResource
-          values <- maxSize
+          values1 <- maxSize
             .divide(partitions)
             .zipWithIndex
             .parTraverse { case (maxSize, idx) => of(maxSize) { id => resource(s"$idx-$id") } }
-          values <- values
+          values <- values1
             .toVector
-            .pure[Resource[F, *]]
+            .pure[ResourceF]
           length  = values.length
         } yield {
           new ResourcePool[F, A] {

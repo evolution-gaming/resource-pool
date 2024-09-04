@@ -13,10 +13,10 @@ import scala.concurrent.duration.*
 import scala.util.control.NoStackTrace
 
 class ResourcePoolTest extends AsyncFunSuite with Matchers {
-
+  type IOResource[+A] = Resource[IO, A]
   test("handle invalid `maxSize`") {
     ()
-      .pure[Resource[IO, *]]
+      .pure[IOResource]
       .toResourcePool(
         maxSize = 1,
         expireAfter = 1.day,
@@ -114,7 +114,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
   test("fail after being released") {
     val result = for {
       result          <- ()
-        .pure[Resource[IO, *]]
+        .pure[IOResource]
         .toResourcePool(
           maxSize = 2,
           expireAfter = 1.day)
@@ -433,7 +433,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
     val result = for {
       deferred0 <- Deferred[IO, Unit].toResource
       pool      <- ()
-        .pure[Resource[IO, *]]
+        .pure[IOResource]
         .toResourcePool(
           maxSize = 1,
           expireAfter = 1.day)
@@ -469,7 +469,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
     val result = for {
       deferred0 <- Deferred[IO, Unit].toResource
       pool      <- ()
-        .pure[Resource[IO, *]]
+        .pure[IOResource]
         .toResourcePool(
           maxSize = 1,
           expireAfter = 1.day)
@@ -633,7 +633,7 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
   test("discard tasks on release") {
     val result = for {
       result   <- ()
-        .pure[Resource[IO, *]]
+        .pure[IOResource]
         .toResourcePool(
           maxSize = 1,
           expireAfter = 1.day,
