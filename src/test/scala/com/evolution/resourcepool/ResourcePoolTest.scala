@@ -34,8 +34,8 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
     sealed trait Action
 
     object Action {
-      final case object Acquire extends Action
-      final case object Release extends Action
+      case object Acquire extends Action
+      case object Release extends Action
     }
 
     val result = for {
@@ -572,8 +572,8 @@ class ResourcePoolTest extends AsyncFunSuite with Matchers {
     sealed trait Action
 
     object Action {
-      final case object Allocate extends Action
-      final case object Release extends Action
+      case object Allocate extends Action
+      case object Release extends Action
     }
 
     val result = for {

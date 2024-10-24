@@ -784,11 +784,11 @@ object ResourcePool {
     }
   }
 
-  final case object ReleasedError extends RuntimeException("released") with NoStackTrace
+  case object ReleasedError extends RuntimeException("released") with NoStackTrace
 
-  final case object CancelledError extends RuntimeException("cancelled") with NoStackTrace
+  case object CancelledError extends RuntimeException("cancelled") with NoStackTrace
 
-  final case class IllegalStateError(msg: String) extends RuntimeException(msg) with NoStackTrace
+  case class IllegalStateError(msg: String) extends RuntimeException(msg) with NoStackTrace
 
 
   implicit class ResourcePoolOps[F[_], A](val self: ResourcePool[F, A]) extends AnyVal {
