@@ -31,8 +31,3 @@ licenses := Seq(("MIT", url("https://opensource.org/licenses/MIT")))
 //addCommandAlias("check", "scalafixEnable; scalafixAll --check; all versionPolicyCheck scalafmtCheckAll scalafmtSbtCheck")
 addCommandAlias("check", "versionPolicyCheck")
 addCommandAlias("build", "all compile test")
-
-// TODO: remove this temporary workaround after v1.0.5
-versionPolicyCheck / skip := {
-  scalaVersion.value == "3.3.4"
-}
