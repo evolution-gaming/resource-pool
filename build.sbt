@@ -20,7 +20,6 @@ versionScheme := Some("early-semver")
 publishTo := Some(Resolver.evolutionReleases) // sbt-release
 versionPolicyIntention := Compatibility.BinaryCompatible // sbt-version-policy
 
-
 libraryDependencies ++= Seq(
   `cats-effect`,
   scalatest
