@@ -1,7 +1,6 @@
-import sbt._
+import sbt.*
 
 object Dependencies {
-  val scalatest        = "org.scalatest" %% "scalatest"      % "3.2.19" % Test
-  val `kind-projector` = "org.typelevel"  % "kind-projector" % "0.13.3"
-  val `cats-effect`    = "org.typelevel" %% "cats-effect"    % "3.5.5"
+  val ScalaTest = "org.scalatest" %% "scalatest" % "3.2.19" % Test
+  val CatsEffect = "org.typelevel" %% "cats-effect" % "3.5.7"
 }
