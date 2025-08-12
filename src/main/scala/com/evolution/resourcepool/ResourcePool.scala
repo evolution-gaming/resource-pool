@@ -2,8 +2,8 @@ package com.evolution.resourcepool
 
 import cats.Functor
 import cats.effect.kernel.Resource.ExitCase
-import cats.effect.{Async, Deferred, MonadCancel, MonadCancelThrow, Ref, Resource, Sync, Temporal}
 import cats.effect.syntax.all.*
+import cats.effect.{Async, Deferred, MonadCancel, MonadCancelThrow, Ref, Resource, Sync, Temporal}
 import cats.syntax.all.*
 import com.evolution.resourcepool.IntHelper.*
 
@@ -14,17 +14,16 @@ import scala.util.control.NoStackTrace
 trait ResourcePool[F[_], A] {
   import ResourcePool.Release
 
-  /** Returns the acquired resource, and a handle releasing it back to the pool.
-    *
-    * Calling the handle will not release resource itself, but just make it
-    * available to be returned again, though resource may expire and be released
-    * if it stays unused for long enough.
-    *
-    * The resource leak may occur if the release handle is never called.
-    * Therefore it is recommended to use
-    * [[ResourcePool.ResourcePoolOps#resource]] method instead, which will
-    * return [[cats.effect.Resource]] calling the handle on release.
-    */
+  /**
+   * Returns the acquired resource, and a handle releasing it back to the pool.
+   *
+   * Calling the handle will not release resource itself, but just make it available to be returned
+   * again, though resource may expire and be released if it stays unused for long enough.
+   *
+   * The resource leak may occur if the release handle is never called. Therefore, it is recommended
+   * to use [[ResourcePool.ResourcePoolOps#resource]] method instead, which will return
+   * [[cats.effect.Resource]] calling the handle on release.
+   */
   def get: F[(A, Release[F])]
 }
 
@@ -34,54 +33,56 @@ object ResourcePool {
 
   type Id = String
 
-  /** Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but number of partitions is
-    * determined automatically by taking into account the number of available
-    * processors and expected pool size.
-    */
+  /**
+   * Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but number of partitions is determined
+   * automatically by taking into account the number of available processors and expected pool size.
+   */
   def of[F[_]: Async, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
     discardTasksOnRelease: Boolean,
-    resource: Id => Resource[F, A]
+    resource: Id => Resource[F, A],
   ): Resource[F, ResourcePool[F, A]] = {
 
     def apply(maxSize: Int) = {
       for {
-        cpus       <- Sync[F]
+        cpus <- Sync[F]
           .delay { Runtime.getRuntime.availableProcessors() }
           .toResource
-        result     <- of(
+        result <- of(
           maxSize = maxSize,
           partitions = (maxSize / 100).min(cpus),
           expireAfter,
           discardTasksOnRelease,
-          resource)
+          resource,
+        )
       } yield result
     }
 
     apply(maxSize.max(1))
   }
 
-  /** Creates a new pool with specified number of partitions.
-    *
-    * @param maxSize
-    *   Maximum size of the whole pool.
-    * @param partitions
-    *   Number of partitions to be used. This number determines the count of the
-    *   threads, that could access the pool in parallel, and also number of
-    *   background processes removing the expiring entries.
-    * @param expireAfter
-    *   Duration after which the resource should be removed if unused.
-    * @param resource
-    *   Factory for creating the new resources. `Id` is a unique identifier of a
-    *   resource that could be used, for example, for logging purposes.
-    */
+  /**
+   * Creates a new pool with specified number of partitions.
+   *
+   * @param maxSize
+   *   Maximum size of the whole pool.
+   * @param partitions
+   *   Number of partitions to be used. This number determines the count of the threads, that could
+   *   access the pool in parallel, and also number of background processes removing the expiring
+   *   entries.
+   * @param expireAfter
+   *   Duration after which the resource should be removed if unused.
+   * @param resource
+   *   Factory for creating the new resources. `Id` is a unique identifier of a resource that could
+   *   be used, for example, for logging purposes.
+   */
   def of[F[_]: Async, A](
     maxSize: Int,
     partitions: Int,
     expireAfter: FiniteDuration,
     discardTasksOnRelease: Boolean,
-    resource: Id => Resource[F, A]
+    resource: Id => Resource[F, A],
   ): Resource[F, ResourcePool[F, A]] = {
     type ResourceF[+AA] = Resource[F, AA]
     def apply(maxSize: Int, partitions: Int) = {
@@ -91,14 +92,15 @@ object ResourcePool {
           maxSize,
           expireAfter,
           discardTasksOnRelease,
-          resource)
+          resource,
+        )
       }
 
       if (partitions <= 1) {
         of(maxSize)(resource)
       } else {
         for {
-          ref    <- Ref[F].of(0).toResource
+          ref <- Ref[F].of(0).toResource
           values1 <- maxSize
             .divide(partitions)
             .zipWithIndex
@@ -106,7 +108,7 @@ object ResourcePool {
           values <- values1
             .toVector
             .pure[ResourceF]
-          length  = values.length
+          length = values.length
         } yield {
           new ResourcePool[F, A] {
             def get = {
@@ -116,7 +118,7 @@ object ResourcePool {
                     val b = a + 1
                     (
                       if (b < length) b else 0,
-                      a
+                      a,
                     )
                   }
                   .flatMap { partition =>
@@ -135,14 +137,15 @@ object ResourcePool {
 
     apply(
       maxSize = maxSize.max(1),
-      partitions = partitions.max(1))
+      partitions = partitions.max(1),
+    )
   }
 
   private def of0[F[_]: Async, A](
     maxSize: Int,
     expireAfter: FiniteDuration,
     discardTasksOnRelease: Boolean,
-    resource: Id => Resource[F, A]
+    resource: Id => Resource[F, A],
   ): Resource[F, ResourcePool[F, A]] = {
 
     type Id = Long
@@ -167,28 +170,30 @@ object ResourcePool {
           id = 0L,
           entries = Map.empty,
           stage = Allocated.Stage.free(List.empty),
-          releasing = Set.empty)
+          releasing = Set.empty,
+        )
       }
 
-      /** Resource pool is allocated.
-        *
-        * @param id
-        *   Sequence number of a last resource allocated (used to generate an
-        *   identifier for a next resource).
-        * @param entries
-        *   Allocated or allocating resources. `Some` means that resource is
-        *   allocated, and `None` means allocating is in progress.
-        * @param stage
-        *   Represents a state of a pool, i.e. if it is fully busy, if there are
-        *   free resources, and the tasks waiting for resources to be freed.
-        * @param releasing
-        *   List of ids being released because these have expired.
-        */
+      /**
+       * Resource pool is allocated.
+       *
+       * @param id
+       *   Sequence number of a last resource allocated (used to generate an identifier for a next
+       *   resource).
+       * @param entries
+       *   Allocated or allocating resources. `Some` means that resource is allocated, and `None`
+       *   means allocating is in progress.
+       * @param stage
+       *   Represents a state of a pool, i.e. if it is fully busy, if there are free resources, and
+       *   the tasks waiting for resources to be freed.
+       * @param releasing
+       *   List of ids being released because these have expired.
+       */
       final case class Allocated(
         id: Long,
         entries: Map[Id, Option[Entry]],
         stage: Allocated.Stage,
-        releasing: Set[Id]
+        releasing: Set[Id],
       ) extends State
 
       object Allocated {
@@ -201,43 +206,44 @@ object ResourcePool {
 
           def busy(tasks: Tasks): Stage = Busy(tasks)
 
-          /** There are free resources to use.
-            *
-            * @param ids
-            *   List of ids from [[Allocated#Entries]] that are free to use. It
-            *   could be equal to `Nil` if all resources are busy, but there
-            *   are no tasks waiting in queue.
-            */
+          /**
+           * There are free resources to use.
+           *
+           * @param ids
+           *   List of ids from [[Allocated#Entries]] that are free to use. It could be equal to
+           *   `Nil` if all resources are busy, but there are no tasks waiting in queue.
+           */
           final case class Free(ids: Ids) extends Stage
 
-          /** No more free resources to use, and tasks are waiting in queue.
-            *
-            * @param tasks
-            *   List of tasks waiting for resources to free up.
-            */
+          /**
+           * No more free resources to use, and tasks are waiting in queue.
+           *
+           * @param tasks
+           *   List of tasks waiting for resources to free up.
+           */
           final case class Busy(tasks: Tasks) extends Stage
         }
       }
 
-      /** Resource pool is being released.
-        *
-        * @param allocated
-        *   Allocated resources.
-        * @param releasing
-        *   List of ids being released (either because pool is releasing or
-        *   because these expired earlier).
-        * @param tasks
-        *   The list of tasks left to be completed before the pool could be
-        *   released.
-        * @param released
-        *   `Deferred`, which will be completed, when all the tasks are
-        *   completed and all resources are released.
-        */
+      /**
+       * Resource pool is being released.
+       *
+       * @param allocated
+       *   Allocated resources.
+       * @param releasing
+       *   List of ids being released (either because pool is releasing or because these expired
+       *   earlier).
+       * @param tasks
+       *   The list of tasks left to be completed before the pool could be released.
+       * @param released
+       *   `Deferred`, which will be completed, when all the tasks are completed and all resources
+       *   are released.
+       */
       final case class Released(
         allocated: Set[Id],
         releasing: Set[Id],
         tasks: Tasks,
-        released: Deferred[F, Either[Throwable, Unit]]
+        released: Deferred[F, Either[Throwable, Unit]],
       ) extends State
     }
 
@@ -253,12 +259,11 @@ object ResourcePool {
                 Deferred
                   .apply[F, Either[Throwable, Unit]]
                   .flatMap { released =>
-
                     def apply(allocated: Set[Id], releasing: Set[Id], tasks: Tasks)(effect: => F[Unit]) = {
                       set
                         .apply { State.Released(allocated = allocated, releasing = releasing, tasks, released) }
                         .flatMap {
-                          case true  =>
+                          case true =>
                             for {
                               result <- {
                                 if (allocated.isEmpty && releasing.isEmpty) {
@@ -301,7 +306,7 @@ object ResourcePool {
                                 } {
                                   case Some(entry) =>
                                     (entries - id, releasing + id, release.productR(entry.release))
-                                  case None        =>
+                                  case None =>
                                     (entries, releasing, release)
                                 }
                           }
@@ -309,7 +314,7 @@ object ResourcePool {
                         apply(
                           allocated = entries.keySet,
                           releasing = releasing,
-                          Queue.empty
+                          Queue.empty,
                         ) {
                           release
                         }
@@ -319,7 +324,7 @@ object ResourcePool {
                           apply(
                             allocated = state.entries.keySet,
                             releasing = state.releasing,
-                            Queue.empty
+                            Queue.empty,
                           ) {
                             stage
                               .tasks
@@ -333,7 +338,7 @@ object ResourcePool {
                           apply(
                             allocated = state.entries.keySet,
                             releasing = state.releasing,
-                            stage.tasks
+                            stage.tasks,
                           ) {
                             ().pure[F]
                           }
@@ -350,15 +355,15 @@ object ResourcePool {
             }
         }
       }
-      _   <- Async[F].background {
+      _ <- Async[F].background {
         val interval = expireAfter / 10
         for {
           _ <- Temporal[F].sleep(expireAfter)
           a <- Async[F].foreverM[Unit, Unit] {
             for {
-              now       <- now
-              threshold  = now - expireAfter
-              result    <- 0.tailRecM { count =>
+              now <- now
+              threshold = now - expireAfter
+              result <- 0.tailRecM { count =>
                 ref
                   .access
                   .flatMap {
@@ -380,7 +385,7 @@ object ResourcePool {
                                       } else {
                                         (id :: ids, entries, releasing, release)
                                       }
-                                    case None        =>
+                                    case None =>
                                       (ids, entries, releasing, release)
                                   }
                             }
@@ -388,12 +393,13 @@ object ResourcePool {
                           set
                             .apply {
                               state.copy(
-                                entries   = entries,
-                                stage     = stage.copy(ids = ids.reverse),
-                                releasing = releasing)
+                                entries = entries,
+                                stage = stage.copy(ids = ids.reverse),
+                                releasing = releasing,
+                              )
                             }
                             .flatMap {
-                              case true  =>
+                              case true =>
                                 release.map { _.asRight[Int] }
                               case false =>
                                 (count + 1)
@@ -432,10 +438,10 @@ object ResourcePool {
                     set
                       .apply { state.copy(entries = state.entries.updated(id, entry.some)) }
                       .map {
-                        case true  => ().asRight[Int]
+                        case true => ().asRight[Int]
                         case false => (count + 1).asLeft[Unit]
                       }
-                  case (_: State.Released, _)        =>
+                  case (_: State.Released, _) =>
                     ()
                       .asRight[Int]
                       .pure[F]
@@ -453,7 +459,8 @@ object ResourcePool {
                   def stateOf(stage: State.Allocated.Stage) = {
                     state.copy(
                       entries = entries,
-                      stage = stage)
+                      stage = stage,
+                    )
                   }
 
                   if (entries.isEmpty) {
@@ -461,7 +468,7 @@ object ResourcePool {
                       case stage: State.Allocated.Stage.Free =>
                         (
                           stateOf(stage),
-                          ().pure[F]
+                          ().pure[F],
                         )
                       case stage: State.Allocated.Stage.Busy =>
                         (
@@ -472,13 +479,13 @@ object ResourcePool {
                               task
                                 .complete(error.asLeft)
                                 .void
-                            }
+                            },
                         )
                     }
                   } else {
                     (
                       stateOf(state.stage),
-                      ().pure[F]
+                      ().pure[F],
                     )
                   }
 
@@ -489,7 +496,8 @@ object ResourcePool {
                   def stateOf(tasks: Tasks) = {
                     state.copy(
                       allocated = allocated,
-                      tasks = tasks)
+                      tasks = tasks,
+                    )
                   }
 
                   if (allocated.isEmpty) {
@@ -511,12 +519,12 @@ object ResourcePool {
                           } else {
                             ().pure[F]
                           }
-                        }
+                        },
                     )
                   } else {
                     (
                       stateOf(state.tasks),
-                      ().pure[F]
+                      ().pure[F],
                     )
                   }
               }
@@ -531,7 +539,7 @@ object ResourcePool {
                   case state: State.Allocated =>
                     (
                       state.copy(releasing = state.releasing - id),
-                      ().pure[F]
+                      ().pure[F],
                     )
 
                   case state: State.Released =>
@@ -539,7 +547,7 @@ object ResourcePool {
                     (
                       state.copy(releasing = releasing),
                       result match {
-                        case Right(a)    =>
+                        case Right(a) =>
                           if (releasing.isEmpty && state.allocated.isEmpty) {
                             // this was the last resource in a pool,
                             // we can release the pool itself now
@@ -555,7 +563,7 @@ object ResourcePool {
                             .released
                             .complete(error.asLeft)
                             .void
-                      }
+                      },
                     )
                 }
                 .flatten
@@ -564,7 +572,7 @@ object ResourcePool {
 
           def releaseOf(id: Id, entry: Entry): Release = {
             for {
-              entry  <- entry.renew
+              entry <- entry.renew
               result <- ref
                 .modify {
                   case state: State.Allocated =>
@@ -572,7 +580,8 @@ object ResourcePool {
                     def stateOf(stage: State.Allocated.Stage) = {
                       state.copy(
                         entries = state.entries.updated(id, entry.some),
-                        stage = stage)
+                        stage = stage,
+                      )
                     }
 
                     state
@@ -580,7 +589,7 @@ object ResourcePool {
                       case stage: State.Allocated.Stage.Free =>
                         (
                           stateOf(stage.copy(ids = id :: stage.ids)),
-                          ().pure[F]
+                          ().pure[F],
                         )
                       case stage: State.Allocated.Stage.Busy =>
                         stage
@@ -589,14 +598,14 @@ object ResourcePool {
                           .fold {
                             (
                               stateOf(State.Allocated.Stage.free(List(id))),
-                              ().pure[F]
+                              ().pure[F],
                             )
                           } { case (task, tasks) =>
                             (
                               stateOf(stage.copy(tasks = tasks)),
                               task
                                 .complete((id, entry).asRight)
-                                .void
+                                .void,
                             )
                           }
                     }
@@ -609,15 +618,16 @@ object ResourcePool {
                         (
                           state.copy(
                             allocated = state.allocated - id,
-                            releasing = state.releasing + id),
-                          entry.release
+                            releasing = state.releasing + id,
+                          ),
+                          entry.release,
                         )
                       } { case (task, tasks) =>
                         (
                           state.copy(tasks = tasks),
                           task
                             .complete((id, entry).asRight)
-                            .void
+                            .void,
                         )
                       }
                 }
@@ -630,21 +640,24 @@ object ResourcePool {
             ref.update {
               case state: State.Allocated =>
                 state.stage match {
-                  case _: State.Allocated.Stage.Free     =>
+                  case _: State.Allocated.Stage.Free =>
                     state
                   case stage: State.Allocated.Stage.Busy =>
                     state.copy(
                       stage = stage.copy(
                         tasks = stage
                           .tasks
-                          .filter { _ ne task }))
+                          .filter { _ ne task },
+                      ),
+                    )
                 }
 
               case state: State.Released =>
                 state.copy(tasks =
                   state
                     .tasks
-                    .filter { _ ne task })
+                    .filter { _ ne task },
+                )
             }
           }
 
@@ -659,7 +672,7 @@ object ResourcePool {
                       set
                         .apply(state)
                         .flatMap {
-                          case true  =>
+                          case true =>
                             effect.map { _.asRight[Int] }
                           case false =>
                             (count + 1)
@@ -695,10 +708,12 @@ object ResourcePool {
                               .entries
                               .get(id)
                               .fold {
-                                IllegalStateError(s"entry is not found, id: $id").raiseError[F, Either[Int, (A, Release)]]
+                                IllegalStateError(s"entry is not found, id: $id")
+                                  .raiseError[F, Either[Int, (A, Release)]]
                               } { entry =>
                                 entry.fold {
-                                  IllegalStateError(s"entry is not defined, id: $id").raiseError[F, Either[Int, (A, Release)]]
+                                  IllegalStateError(s"entry is not defined, id: $id")
+                                    .raiseError[F, Either[Int, (A, Release)]]
                                 } { entry =>
                                   entry
                                     .renew
@@ -706,7 +721,8 @@ object ResourcePool {
                                       apply {
                                         state.copy(
                                           stage = stage.copy(ids),
-                                          entries = state.entries.updated(id, entry.some))
+                                          entries = state.entries.updated(id, entry.some),
+                                        )
                                       } {
                                         (entry.value, releaseOf(id, entry)).pure[F]
                                       }
@@ -723,7 +739,8 @@ object ResourcePool {
                               apply {
                                 state.copy(
                                   id = id + 1,
-                                  entries = state.entries.updated(id, none))
+                                  entries = state.entries.updated(id, none),
+                                )
                               } {
                                 poll
                                   .apply {
@@ -737,18 +754,19 @@ object ResourcePool {
                                     case Right((value, release)) =>
                                       // resource was allocated
                                       for {
-                                        now   <- now
-                                        entry  = Entry(
-                                          value    = value,
-                                          release  = entryRelease(id, release)
+                                        now <- now
+                                        entry = Entry(
+                                          value = value,
+                                          release = entryRelease(id, release)
                                             .start
                                             .void,
-                                          timestamp = now)
-                                        _     <- entryAdd(id, entry)
+                                          timestamp = now,
+                                        )
+                                        _ <- entryAdd(id, entry)
                                       } yield {
                                         (value, releaseOf(id, entry))
                                       }
-                                    case Left(a)                 =>
+                                    case Left(a) =>
                                       // resource failed to allocate
                                       entryRemove(id, a).productR { a.raiseError[F, Result] }
                                   }
@@ -790,16 +808,17 @@ object ResourcePool {
 
   case class IllegalStateError(msg: String) extends RuntimeException(msg) with NoStackTrace
 
-
   implicit class ResourcePoolOps[F[_], A](val self: ResourcePool[F, A]) extends AnyVal {
 
-    /** Returns a `Resource`, which, when allocated, will take a resource from a
-      * pool.
-      *
-      * When the `Resource` is released then the underlying resource is released
-      * back to the pool.
-      */
-    def resource(implicit F: Functor[F]): Resource[F, A] = {
+    /**
+     * Returns a `Resource`, which, when allocated, will take a resource from a pool.
+     *
+     * When the `Resource` is released then the underlying resource is released back to the pool.
+     */
+    def resource(
+      implicit
+      F: Functor[F],
+    ): Resource[F, A] = {
       Resource.applyFull { poll =>
         poll
           .apply { self.get }
@@ -811,9 +830,10 @@ object ResourcePool {
   object implicits {
     implicit class ResourceOpsResourcePool[F[_], A](val self: Resource[F, A]) extends AnyVal {
 
-      /** Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a
-        * shorter syntax to create a pool out of existing resource.
-        */
+      /**
+       * Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a shorter syntax to create a
+       * pool out of existing resource.
+       */
       def toResourcePool(
         maxSize: Int,
         expireAfter: FiniteDuration,
@@ -823,9 +843,10 @@ object ResourcePool {
         toResourcePool(maxSize, expireAfter, discardTasksOnRelease = false)
       }
 
-      /** Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a
-        * shorter syntax to create a pool out of existing resource.
-        */
+      /**
+       * Same as [[of[F[_],A](maxSize:Int,expireAfter*]], but provides a shorter syntax to create a
+       * pool out of existing resource.
+       */
       def toResourcePool(
         maxSize: Int,
         expireAfter: FiniteDuration,
@@ -837,12 +858,14 @@ object ResourcePool {
           maxSize,
           expireAfter,
           discardTasksOnRelease,
-          _ => self)
+          _ => self,
+        )
       }
 
-      /** Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but provides a
-        * shorter syntax to create a pool out of existing resource.
-        */
+      /**
+       * Same as [[of[F[_],A](maxSize:Int,partitions:Int*]], but provides a shorter syntax to create
+       * a pool out of existing resource.
+       */
       def toResourcePool(
         maxSize: Int,
         partitions: Int,
@@ -856,7 +879,8 @@ object ResourcePool {
           partitions,
           expireAfter,
           discardTasksOnRelease,
-          _ => self)
+          _ => self,
+        )
       }
     }
   }
