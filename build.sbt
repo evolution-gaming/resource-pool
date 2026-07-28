@@ -1,11 +1,11 @@
-import Dependencies._
+import Dependencies.*
 
 name := "resource-pool"
 
 organization := "com.evolution"
 organizationName := "Evolution"
-organizationHomepage := Some(url("https://evolution.com"))
-homepage := Some(url("https://github.com/evolution-gaming/resource-pool"))
+organizationHomepage := Some(uri("https://evolution.com"))
+homepage := Some(uri("https://github.com/evolution-gaming/resource-pool"))
 startYear := Some(2023)
 
 crossScalaVersions := Seq("2.13.18", "3.3.8")
@@ -41,7 +41,7 @@ libraryDependencies ++= Seq(
   ScalaTest,
 )
 
-licenses := Seq(("MIT", url("https://opensource.org/licenses/MIT")))
+licenses := Seq(("MIT", uri("https://opensource.org/licenses/MIT")))
 
 def crossSettings[T](scalaVersion: String, if3: T, if2: T): T = {
   scalaVersion match {
@@ -50,6 +50,6 @@ def crossSettings[T](scalaVersion: String, if3: T, if2: T): T = {
   }
 }
 
-addCommandAlias("fmt", "all scalafmtAll scalafmtSbt")
-addCommandAlias("check", "all versionPolicyCheck scalafmtCheckAll scalafmtSbtCheck")
-addCommandAlias("build", "all compile test")
+addCommandAlias("fmt", "all scalafmtRepo")
+addCommandAlias("check", "all versionPolicyCheck scalafmtCheckRepo")
+addCommandAlias("build", "+all compile testFull")
