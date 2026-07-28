@@ -35,11 +35,17 @@ jobs:
         run: sbt "++${{ matrix.scala }}; clean; check"
 
       - name: build ${{ matrix.scala }}
-        run: sbt "++${{ matrix.scala }}; clean; coverage; test; coverageAggregate"
+        run: sbt "++${{ matrix.scala }}; clean; coverage; testFull; coverageAggregate"
+
+      - name: locate coverage report
+        id: coverage
+        if: success()
+        run: echo "file=$(find . -path '*/coverage-report/cobertura.xml' | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: test coverage
         if: success()
-        run: sbt "++${{ matrix.scala }}; coverageAggregate; coveralls"
-        env:
-          COVERALLS_REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COVERALLS_FLAG_NAME: Scala ${{ matrix.scala }}
+        uses: coverallsapp/github-action@v2
+        with:
+          file: ${{ steps.coverage.outputs.file }}
+          format: cobertura
+          flag-name: Scala ${{ matrix.scala }}
